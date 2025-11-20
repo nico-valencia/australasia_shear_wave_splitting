@@ -16,10 +16,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # ----------------- PARAMETERS -----------------
 data_type   = 'complete'
-data_tag    = 'AU'
-station     = 'australia'
+data_tag    = 'swp'
+station     = 'swp'
 freqType    = "normal"
-date        = 'sep17'
+date        = 'oct3'
 
 events_file     = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_events_{date}.txt'
 station_file    = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_stations_info.txt'
@@ -81,8 +81,8 @@ def process_waveform(row,freqType=freqType):
         #     return None
 
         
-        windowstart = phase_ind - 200 
-        windowend = phase_ind + 200
+        windowstart = phase_ind - 300 
+        windowend = phase_ind + 300
 
         # Particle motion
         pm_wf.detrend('demean')

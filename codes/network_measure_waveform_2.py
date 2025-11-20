@@ -12,10 +12,10 @@ import copy
 
 # ----------------- PARAMETERS -----------------
 data_type   = 'complete'
-data_tag    = 'AU'
-station     = 'australia'
+data_tag    = 'swp'
+station     = 'swp'
 freqType    = "normal"
-date        = 'sep17'
+date        = 'oct3'
 
 events_file     = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_windowed_events_{freqType}_{date}.txt'
 station_file    = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_stations_info.txt'
@@ -52,7 +52,12 @@ def measure_waveform(row,freqType = freqType):
         evwindowstart = row['windowstart']
         evwindowend = row['windowend']
         pair = sw.Pair(north, east, delta=sample_interval)
+        # print(f"length of pair before setting window:{len(pair.x)}")
         pair.set_window(float(evwindowstart), float(evwindowend))
+        # print(f"length of pair after setting window:{len(pair.x)}")
+        chopped_pair = pair.chop()
+        # print(f"Length of pair after chopping: {len(chopped_pair.x)}")
+
 
         beta = ((((float(row['calcbaz']) - float(row['evbaz'])) % 180) + 90) % 180) - 90
 
@@ -60,15 +65,15 @@ def measure_waveform(row,freqType = freqType):
         # print(f"this is me seeing what evbaz looks like {row['evbaz']}")
         # print(f"this is me seeing what calcbaz looks like {row['calcbaz']}")
 
-        wiggleSIlow_act , wiggleSI_act , wiggleSIhigh_act = SplittingIntensity(pair,float(row['evbaz']))
-        wiggleSIlow_calc, wiggleSI_calc, wiggleSIhigh_calc = SplittingIntensity(pair,float(row['calcbaz']))
+        wiggleSIlow_act , wiggleSI_act , wiggleSIhigh_act = SplittingIntensity(chopped_pair,float(row['evbaz']))
+        wiggleSIlow_calc, wiggleSI_calc, wiggleSIhigh_calc = SplittingIntensity(chopped_pair,float(row['calcbaz']))
         
         return beta,wiggleSIlow_act , wiggleSI_act , wiggleSIhigh_act,wiggleSIlow_calc, wiggleSI_calc, wiggleSIhigh_calc
 
     except Exception:
         return (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
 
-def parallelize_dataframe(df, func, max_workers=16):
+def parallelize_dataframe(df, func, max_workers=32):
     input_data = df.to_dict('records')
     results = [None] * len(input_data)
     
