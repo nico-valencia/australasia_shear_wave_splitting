@@ -16,6 +16,8 @@ from pyproj import Geod
 from support import plot_great_circle_ray_path, plot_trace_final, envelopes
 from obspy import read
 import splitwavepy as sw 
+from obspy.geodetics import gps2dist_azimuth
+
 
 # sys.exit()
 
@@ -39,15 +41,31 @@ dataType    = 'complete'
 networkName = 'AU'
 stationName = 'australia'
 freqType = 'normal'
+manual = False
+stat = 'CMSA'
+
 
 dir_stations  = '../data/'+dataType+'/'+stationName+'/'+networkName+'_stations_info.txt'
 stations_df  = pd.read_csv(dir_stations,sep='|',header=0)
 output_dir      = '../data/'+dataType+'/'+stationName+'/'+networkName
 
 # -------- retrieving measurements and refining which results to use ---------
-eventData = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/data/'+dataType+'/'+stationName+'/'+networkName+'_measured_events_normal_sep17.txt',sep='|')
+eventData = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/data/'+dataType+'/'+stationName+'/'+networkName+'_measured_events_'+freqType+'_sep28.txt',sep='|')
 # eventData = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/data/'+dataType+'/'+stationName+'/'+networkName+'_events_measurements_apr21.txt',sep='|')
 station_names = stations_df['Station']
+
+# -------- Wolf's measurements
+fullwolf = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/SKS_global_SI.txt',sep=r"\s+",engine="python") #,names=colnames,quotechar="'",)
+# wolf.columns = wolf.columns.str.replace(" ", "_")
+# wolf = wolf[wolf['station_code']==stat]
+# wolf["backaz"] = wolf.apply(
+#     lambda row: gps2dist_azimuth(
+#         row["station_lat"], row["station_lon"],
+#         row["event_lat"], row["event_lon"]
+#     )[2],  # index 2 = back azimuth
+#     axis=1
+# )
+# print(wolf.head())
 
 # output file for saved measurements
 columns = ['Station','Latitude','Longitude','phi', 'dt'] 
@@ -59,27 +77,28 @@ ravel   = False     # False: 0 - 180 azimuth range, True: 0 - 360 azimuth range
 single  = True      # single layer or double layer of anisotropy 
 
 snr_threshold = 4           # Signal / Noise Filter (Restivo & Helffrich 1999)
-snrbefore_threshold = 4   # Signal Noise Ratio before phase window 
-snrafter_threshold = 4    # Signal Noise Ratio after phase window 
-sta_lta_threshold = 6      # STA/LTA minimum (phase prominence)
-ellipticity_threshold = 20  # ellipticity of particle motion (needs to be worked on)
+snrbefore_threshold = 1.5   # Signal Noise Ratio before phase window 
+snrafter_threshold = 1.5    # Signal Noise Ratio after phase window 
+sta_lta_threshold = 4      # STA/LTA minimum (phase prominence)
+ellipticity_threshold = 40  # ellipticity of particle motion (needs to be worked on)
 mag_threshold = 7.0         # eq magnitude maximum (larger eq's source mechanisms contaminate signal)
-sierrmax = 0.1             # SI error maximum 
+sierrmax = 0.5           # SI error maximum 
 s_depth = 400               # eq depth to be marked as 's_depth'
 sample_rate = 1             # sample rate of waveforms, needed to rescale SI? ask jonathan about this
 # dataset truncation based on criteria
 
-eventData = eventData[eventData['delta_travel'] < 15]
+# eventData = eventData[eventData['delta_travel'] < 20]
 # # eventData = eventData[eventData['beta']<10]
 # eventData = eventData[eventData['evincident']<25]
-eventData = eventData[eventData['evpiercedepth']>=1000]
+eventData = eventData[eventData['evpiercedepth']>=1500]
+# eventData = eventData[eventData['evepic']>70]
 
 # eventData = eventData[eventData['snr'] > snr_threshold]
-eventData = eventData[eventData['snrbefore'] > snrbefore_threshold]
-eventData = eventData[eventData['snrafter'] > snrafter_threshold]
+# eventData = eventData[eventData['snrbefore'] > snrbefore_threshold]
+# eventData = eventData[eventData['snrafter'] > snrafter_threshold]
 # eventData = eventData[eventData['sta_lta'] > sta_lta_threshold]
-# # eventData = eventData[eventData['evmg'] < mag_threshold]
-eventData = eventData[eventData['ellipticity'] > ellipticity_threshold]
+# eventData = eventData[eventData['evmg'] < mag_threshold]
+# eventData = eventData[eventData['ellipticity'] > ellipticity_threshold]
 
 # calculate SI errors and also trunate 
 
@@ -113,14 +132,13 @@ based on phase type, the measurements are binned into azimuthal ranges
 
 # ---------- measurement binning criteria ----------
 sks_weight       = 1
-s_weight         = 0.5
-s_depth_weight   = 0.5
-s_shallow_weight = 0.5
-bin_width        = 10   # width of bin in degrees
-bin_minimum      = 10   # minimum number of measurements within a bin to calculate a confidence interval
+s_weight         = 1
+s_depth_weight   = 1
+s_shallow_weight = 1
+bin_width        = 5   # width of bin in degrees
+bin_minimum      = 2   # minimum number of measurements within a bin to calculate a confidence interval
 array            = np.arange(0, 360, bin_width)      # designed to be used for non-raveled results
 
-# stat = 'CMSA'
 for station_name in station_names: 
     # if station_name == stat:
     #         pass
@@ -129,8 +147,17 @@ for station_name in station_names:
 
     try:
         eventdata = eventData[eventData['evstation']==station_name].copy()
-        eventdata = eventData.drop_duplicates(subset=['evtime','evphase'])
+        eventdata = eventdata.drop_duplicates(subset=['evtime','evphase'])
         print(f"Filtered measurement catalog length for {station_name}:", len(eventdata))
+
+        wolf = fullwolf[fullwolf['station_code']==station_name]
+        wolf["backaz"] = wolf.apply(
+            lambda row: gps2dist_azimuth(
+                row["station_lat"], row["station_lon"],
+                row["event_lat"], row["event_lon"]
+            )[2],  # index 2 = back azimuth
+            axis=1
+        )
 
 
         if len(eventdata) == 0:
@@ -158,32 +185,33 @@ for station_name in station_names:
         elif freqType == 'normal':
             freqmin, freqmax = 0.01, 0.125
 
-        for i in range(0,len(eventdata)):
-            row = eventdata.iloc[i]
-            wf = read(row['waveform_path'])
-            print(row['evtime'])
+        if manual:
+            for i in range(0,len(eventdata)):
+                row = eventdata.iloc[i]
+                wf = read(row['waveform_path'])
+                print(row['evtime'])
 
-            # Filtering
-            wf.detrend('demean')
-            wf.detrend('linear')
-            wf.filter("bandpass", freqmin=freqmin, freqmax=freqmax)
+                # Filtering
+                wf.detrend('demean')
+                wf.detrend('linear')
+                wf.filter("bandpass", freqmin=freqmin, freqmax=freqmax)
 
-            north = wf.select(component="N", channel='BH*')[0].data
-            east  = wf.select(component="E", channel='BH*')[0].data
-            sample_interval = wf[0].stats.delta
+                north = wf.select(component="N", channel='BH*')[0].data
+                east  = wf.select(component="E", channel='BH*')[0].data
+                sample_interval = wf[0].stats.delta
 
-            if len(north) % 2 == 0: north = north[:-1]
-            if len(east) % 2 == 0: east = east[:-1]
+                if len(north) % 2 == 0: north = north[:-1]
+                if len(east) % 2 == 0: east = east[:-1]
 
-            evwindowstart = int(row['windowstart'] / sample_interval)
-            evwindowend = int(row['windowend'] / sample_interval)
-            # print(evwindowstart,evwindowend)
-            pair = sw.Pair(north, east, delta=sample_interval)
+                evwindowstart = int(row['windowstart'] / sample_interval)
+                evwindowend = int(row['windowend'] / sample_interval)
+                # print(evwindowstart,evwindowend)
+                pair = sw.Pair(north, east, delta=sample_interval)
 
-            a,b,env,c,d  = envelopes(pair,row['evbaz'],row['calcbaz'],evwindowstart,evwindowend)
-            kwargs = {'title': f"Event: {row['evtime']} Phase: {row['evphase']} Depth: {row['evdp']} Mag: {row['evmg']} Epic: {round(row['evepic'],1)}"}
-            plot_trace_final(pair,row['evbaz'],row['calcbaz'],evwindowstart,evwindowend,env,**kwargs)
-            plt.show()    
+                a,b,env,c,d  = envelopes(pair,row['evbaz'],row['calcbaz'],evwindowstart,evwindowend)
+                kwargs = {'title': f"Event: {row['evtime']} Phase: {row['evphase']} Depth: {row['evdp']} Mag: {row['evmg']} Epic: {round(row['evepic'],1)}"}
+                plot_trace_final(pair,row['evbaz'],row['calcbaz'],evwindowstart,evwindowend,env,**kwargs)
+                plt.show()    
 
             choice = input("Save result? (y/n): ").strip().lower()
 
@@ -197,7 +225,7 @@ for station_name in station_names:
                 print("measurement not saved.")
 
 
-        eventdata = eventdata[eventdata['pass']==1]
+        # eventdata = eventdata[eventdata['pass']==1]
         print(f"this is the length{len(eventdata)}")
 
         #################################################
@@ -212,8 +240,9 @@ for station_name in station_names:
 
         for chunk in range(0,len(array)):
             bin_eventdata = eventdata[eventdata['chunk'] == chunk + 1]
+            # si_values_sks = bin_eventdata['wiggleSI_calc'] # only for using all measurements for bins lol
             si_values_sks = bin_eventdata[bin_eventdata['evphase'] == 'SKS']['wiggleSI_calc']
-            si_values_s   = bin_eventdata[bin_eventdata['evphase'] == 'S']['wiggleSI_calc']
+            si_values_s   = bin_eventdata[(bin_eventdata['evphase'] == 'S')]['wiggleSI_calc']
             si_values_s_depth   = bin_eventdata[(bin_eventdata['evphase'] == 'S')
                                                 &(bin_eventdata['evdp'] >= s_depth)]['wiggleSI_calc']
             si_values_s_shallow = bin_eventdata[(bin_eventdata['evphase'] == 'S')
@@ -258,27 +287,48 @@ for station_name in station_names:
         binned_s_shallow_results = binned_s_shallow_results[binned_s_shallow_results[:,2] != 0, :]
 
         # combine all results into one array 
-        binned_results  = np.vstack((binned_s_results, binned_sks_results,binned_s_depth_results,binned_s_shallow_results))
+        # binned_results  = np.vstack((binned_s_results, binned_sks_results,binned_s_depth_results,binned_s_shallow_results))
         # binned_results  = np.vstack((binned_sks_results,binned_s_depth_results,binned_s_shallow_results))
+        binned  = np.vstack((binned_sks_results,binned_s_results))
+        binned_results = pd.DataFrame(binned,columns=['chunk','mean','weight','azimuth','margin','name'])
+        binned_results = binned_results[binned_results['margin']<= 1]
+        # binned_results = binned_results[binned_results[] < ]
+        # print(binned_results)
 
+        # sys.exit()
 
+        # # SI function for nonlinear least squares regression
+        # def SI_function(baz,fast,lag):
+        #     SI = lag * 2 * np.sin(np.deg2rad(baz-fast)) * np.cos(np.deg2rad(baz-fast))
+        #     return SI
+        # bounds = ([-360, 0], [360,4])
 
-        # SI function for nonlinear least squares regression
-        def SI_function(baz,fast,lag):
-            SI = lag * 2 * np.sin(np.deg2rad(baz-fast)) * np.cos(np.deg2rad(baz-fast))
+        # sine_fit = sci.curve_fit(SI_function,binned_results['azimuth'],binned_results['mean'],sigma=binned_results['weight'],bounds=bounds,full_output=True,nan_policy='omit') #,p0=p0)
+        # params,cov,fitdata,trash1,trash2 = sine_fit
+        # phi,dt = params[0],params[1]
+
+        def SI_function(baz_incident,fast,lag,tilt):
+            baz,incident = baz_incident
+            SI = lag * ((np.cos(np.deg2rad(tilt))**2 * np.sin(2*np.deg2rad(baz-fast))) 
+                            + (np.sin(2*np.deg2rad(tilt)) * np.sin(np.deg2rad(baz-fast)) * np.tan(np.deg2rad(incident))))
             return SI
-        bounds = ([-360, 0], [360,3])
+        bounds = ([-360, 0, 0], [360, 4, 45])
 
-        # retrieving best fit parameters for SI, phi and dt
-        mask = ~np.isnan(eventdata['calcbaz']) & ~np.isnan(eventdata['wiggleSI_calc']) & ~np.isnan(eventdata['SI_calc_error'])
-        x_clean = eventdata['calcbaz'][mask]
-        y_clean = eventdata['wiggleSI_calc'][mask]
-        sigma_clean = eventdata['SI_calc_error'][mask] 
-        sine_fit = sci.curve_fit(SI_function,x_clean,y_clean,sigma=sigma_clean,bounds=bounds,full_output=True) #,p0=p0)
-
-        # sine_fit = sci.curve_fit(SI_function,binned_results[:,3],binned_results[:,1],sigma=binned_results[:,2],bounds=bounds,full_output=True,nan_policy='omit') #,p0=p0)
+        sine_fit = sci.curve_fit(SI_function,(binned_results['azimuth'],np.full_like(binned_results['azimuth'],20)),binned_results['mean'],sigma=binned_results['weight'],bounds=bounds,full_output=True,nan_policy='omit') #,p0=p0)
         params,cov,fitdata,trash1,trash2 = sine_fit
-        phi,dt = params[0],params[1]
+        phi,dt,tilt = params[0],params[1],params[2]
+
+        # sine_fit = sci.curve_fit(SI_function,baz_and_incident,binned_results[:,1],sigma=binned_results[:,2],bounds=bounds,full_output=True,nan_policy='omit') #,p0=p0)
+        #     # sine_fit = sci.curve_fit(SI_function,baz_and_incident,eventdata['wiggleSI_calc'],sigma=inv_weight,bounds=bounds,full_output=True) #,p0=p0)
+        #     params,cov,fitdata,trash1,trash2 = sine_fit
+        #     phi,dt,tilt = params[0],params[1],params[2]
+
+
+        
+
+        if dt < 0.5:
+            continue
+
 
         # plotting graph with all indivudual measurements and SI errors
         # Make a 2x3 grid
@@ -293,11 +343,11 @@ for station_name in station_names:
         # plt.ylim(-2,2)
         # plt.title(f"{station_name} SI measurements for SKS and S, phi={round(phi,3)} dt={round(dt,3)} ")
         # plt.legend()
-        ax1.set_title(f"{station_name} SI measurements for SKS and S, phi={round(phi,3)} dt={round(dt,3)*sample_rate} ")
+        ax1.set_title(f"{station_name} SI measurements for SKS and S, phi={round(phi,3)} dt={round(dt,3)*sample_rate}, tilt={round(tilt,3)} ")
         ax1.legend()
         # ax1.legend(loc='upper right', bbox_to_anchor=(0.5, -0.05),
         #   fancybox=True, shadow=True, ncol=3, fontsize = 5)
-        # ax1.set_ylim(-2,2)
+        ax1.set_ylim(-3,3)
         sks_tick = 0 
         s_tick = 0
         s_depth_tick = 0 
@@ -329,8 +379,11 @@ for station_name in station_names:
                     print('s_tick:  ', s_shallow_tick)
 
         k = 1        
-        ax1.plot(degs , k * SI_function(degs, *params),color='black',linewidth=5)          #parameters calculated from binned back azimuths 
+        # ax1.plot(degs , k * SI_function(degs, *params),color='black',linewidth=5)          #parameters calculated from binned back azimuths 
 
+        incs = np.full_like(degs,30)
+        vars = np.vstack((degs,incs))
+        ax1.plot(degs , SI_function(vars, *params),color='black',linewidth=5)   
         # for i in range(0,len(eventdata)):
         #     if eventdata['evphase'].iloc[i] == 'SKS':
         #         label = 'SKS phase' if sks_tick == 0 else None
@@ -357,25 +410,48 @@ for station_name in station_names:
         #             print('s_tick:  ', s_shallow_tick)
 
 
-        for i in range(0,len(binned_results)):
-            if binned_results[i,5] == 1:
-                ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='blue')
-                ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='blue')
+        # for i in range(0,len(binned_results)):
+        #     if binned_results[i,5] == 1:
+        #         ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='blue')
+        #         ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='blue')
 
-            if binned_results[i,5] == 2:
-                ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='red')
-                ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='red')
+        #     if binned_results[i,5] == 2:
+        #         ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='red')
+        #         ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='red')
 
-            if binned_results[i,5] == 3:
-                ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='green')
-                ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='orange')
+        #     if binned_results[i,5] == 3:
+        #         ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='green')
+        #         ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='orange')
 
-            if binned_results[i,5] == 4:
-                ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='orange')
-                ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='green')
+        #     if binned_results[i,5] == 4:
+        #         ax2.plot(binned_results[i,3],binned_results[i,1],'o',color='orange')
+        #         ax2.errorbar(binned_results[i,3],binned_results[i,1],yerr=binned_results[i,4],color='green')
 
-        ax2.plot(degs , k* SI_function(degs, *params),color='black',linewidth=5)          #parameters calculated from binned back azimuths 
-        # ax2.set_ylim(-2,2)
+        for i, row in binned_results.iterrows():
+            if row["name"] == 1:
+                ax2.plot(row["azimuth"], row["mean"], 'o', color='blue')
+                ax2.errorbar(row["azimuth"], row["mean"], yerr=row["margin"], color='blue')
+
+            elif row["name"] == 2:
+                ax2.plot(row["azimuth"], row["mean"], 'o', color='red')
+                ax2.errorbar(row["azimuth"], row["mean"], yerr=row["margin"], color='red')
+
+            elif row["name"] == 3:
+                ax2.plot(row["azimuth"], row["mean"], 'o', color='green')
+                ax2.errorbar(row["azimuth"], row["mean"], yerr=row["margin"], color='orange')
+
+            elif row["name"] == 4:
+                ax2.plot(row["azimuth"], row["mean"], 'o', color='orange')
+                ax2.errorbar(row["azimuth"], row["mean"], yerr=row["margin"], color='green')
+
+        ax2.plot(wolf['backaz'],wolf['SI'],'o',color='pink')
+        # ax2.errorbar(wolf['backaz'],wolf['SI'],ls='o',yerr=wolf['SI_plus_err'],color='pink')
+        # ax2.plot(degs , k* SI_function(degs, *params),color='black',linewidth=5)          #parameters calculated from binned back azimuths 
+        incs = np.full_like(degs,30)
+        vars = np.vstack((degs,incs))
+        ax2.plot(degs , SI_function(vars, *params),color='black',linewidth=5) 
+       
+        ax2.set_ylim(-3,3)
         ax2.set_xlabel("Polarization Azimuth")
 
         # plt.subplot(2,2,3)
