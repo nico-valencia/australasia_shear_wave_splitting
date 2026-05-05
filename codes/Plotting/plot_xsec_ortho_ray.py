@@ -80,7 +80,7 @@ model_config = {
 
 # min / max depths to plot
 dmin = 50.0
-dmax = 1500.0
+dmax = 2900.0
 
 # number of radial samples
 nr = 200
@@ -194,14 +194,63 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
     # declare named_hotspots as global
     global named_hotspots
 
-    # # truncate window to see only source of events ONLY FOR FITZ
-    p1 = shoot(p2,60,100)
-    p2new = shoot(p1,20,260)
-    # deltastat = 0 
+        # Original endpoints
+    p1_orig = p1   # Left endpoint
+    p2_orig = p2   # Right endpoint
 
-    deltastat,azstat=delaz(p2,p2new)
-    # print('deltastat:',deltastat)
-    p2 = p2new
+    # Get azimuths along the great circle
+    _, az_p1_to_p2 = delaz(p1_orig, p2_orig)
+    _, az_p2_to_p1 = delaz(p2_orig, p1_orig)
+
+    # Extend beyond p1
+    overshoot_p1 = 10  # degrees
+    az_beyond_p1 = (az_p1_to_p2 + 180) % 360
+    p1_extended = shoot(p1_orig, overshoot_p1, az_beyond_p1)
+
+    # Extend beyond p2
+    overshoot_p2 = 20  # degrees
+    az_beyond_p2 = (az_p2_to_p1 + 180) % 360
+    p2_extended = shoot(p2_orig, overshoot_p2, az_beyond_p2)
+
+    # Use extended points
+    p1 = p1_extended
+    p2 = p2_extended
+
+    print(f"Extended p1: {p1}")
+    print(f"Extended p2: {p2}")
+
+    print(f"Azimuth from p1 to p2: {az_p1_to_p2:.1f}°")
+    print(f"Azimuth from p2 to p1: {az_p2_to_p1:.1f}°")
+
+    # p2_current = p2
+    # # Calculate azimuth from ARMA to current source
+    # delta_current, az_to_source = delaz(p1, p2_current)
+    # print(f"Current distance: {delta_current:.1f}°, azimuth: {az_to_source:.1f}°")
+
+    # # Extend p1 farther in the same direction
+    # desired_distance = 120  # degrees (or whatever you want)
+    # p2_extended = shoot(p1, desired_distance, az_to_source)
+
+    # # also expand p1 so station is within nice view
+    # delta_current, az_to_station = delaz(p2_extended, p1)
+    # station_shoulder = desired_distance + 10  
+    # p1_extended = shoot(p2_extended, station_shoulder, az_to_station)
+
+    # print(f"Original p2: {p2_current}")
+    # print(f"Extended p2: {p2_extended}")
+
+    # # Use extended p1 for cross-section
+    # p2 = p2_extended
+    # p1 = p1_extended
+
+    # # # truncate window to see only source of events ONLY FOR FITZ
+    # p1 = shoot(p2,60,100)
+    # p2new = shoot(p1,20,260)
+    # # deltastat = 0 
+
+    # deltastat,azstat=delaz(p2,p2new)
+    # # print('deltastat:',deltastat)
+    # p2 = p2new
 
     # # # # truncate window to see only source of events ONLY FOR STKA
     # p1 = shoot(p2,50,360)
@@ -212,6 +261,7 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
     # # print('deltastat:',deltastat)
     # p2 = p2new
 
+    deltastat = 0 
     # setup sampling path
     # distance, azimuth
     print(p1,p2)
@@ -362,8 +412,44 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
         x2 = x1 - tick_km_height * np.cos(np.radians(td))
         plt.plot((x1,x2), (y1,y2), 'k-', lw=tick_width)
 
+    # MARK STATION LOCATION ON CROSS-SECTION
+    # Station is at p1_orig, which is overshoot_p1 from the left edge
+    station_dist_from_left = overshoot_p1  # degrees from p1_extended
+    station_angle = -delta/2 + station_dist_from_left  # Angle in cross-section coords
+    
+    # Plot at surface
+    rs = r_earth - dmin
+    ys = np.cos(np.radians(station_angle)) * rs
+    xs = np.sin(np.radians(station_angle)) * rs
+
+    rotation_angle = delta/2 - station_dist_from_left + 180  # 180 for upside-down
+
+    plt.plot(xs, ys, marker=(3, 0, rotation_angle), markersize=15, 
+            markerfacecolor='red', markeredgecolor='black', 
+            markeredgewidth=2, ls='', zorder=1002)
+    
+    # plt.plot(xs, ys, marker='v', markersize=15, markerfacecolor='red',
+    #         markeredgecolor='black', markeredgewidth=2, ls='', zorder=1002)
+
     # plot Sdiff raypath
-    eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/data/sample/FITZ/tonga_events.txt',sep='|')
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/data/sample/FITZ/tonga_events.txt',sep='|')
+
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/ARMA_chile_events.txt',sep=',')
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/ARMA_weird_deep_S_events.txt',sep=',')
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/ARMA_tonga_deep_S_events.txt',sep=',')
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/ARMA_evbaz_120_to_150_events.txt',sep=',')
+
+    eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/BBOO_evbaz_140_to_165_events.txt',sep=',')
+
+
+
+
+
+    ### 4 events from Mariana trench area
+    # eqdata = eqdata[eqdata['evlat']<0]
+    # eqdata = eqdata[eqdata['evlon']>130]
+
+
 
     #### bkni phillipine subduction 
     # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/data/sample/BKNI/BKNI_events_dec6.txt',sep='|')
@@ -374,20 +460,21 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
     # eqdata = eqdata[eqdata['evlat']<10]
     # eqdata = eqdata[eqdata['evlon']>120]
     
-    eqdata = eqdata[eqdata['evdp']>=300]
+    # eqdata = eqdata[eqdata['evdp']>=300]
     taup_model = TauPyModel(model='iasp91')
 
-
     show_ray=True
+
     if show_ray:
         
         for i in range(0,len(eqdata)):
             eqdepth = float(eqdata['evdp'].iloc[i])
             eqdist = float(eqdata['evepic'].iloc[i])
+            eqphase = str(eqdata['evphase'].iloc[i])
             print(eqdepth,eqdist)
         
             arrivals_tmp = taup_model.get_ray_paths(eqdepth,
-                            eqdist, phase_list=['S'])
+                            eqdist, phase_list=[eqphase])
             arrivals = []
             for arrival in arrivals_tmp:
                 # dist = arrival.purist_distance % 360.0
@@ -407,17 +494,25 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
                 # eqdist-delta
 
 
-                xr = np.sin(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat)) * (r_earth - arrival.path["depth"])
-                yr = np.cos(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat)) * (r_earth - arrival.path["depth"])
+                xr = np.sin(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat-overshoot_p1)) * (r_earth - arrival.path["depth"])
+                yr = np.cos(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat-overshoot_p1)) * (r_earth - arrival.path["depth"])
             
+                xr = -xr
+
                 plt.plot(xr[0],yr[0],'o',c='gold',marker='*',markersize=10,markeredgecolor='black',# Outline color
     markeredgewidth=1)
 
-                if float(abs(eqdata['deltaphi'].iloc[i])) > 60:
-                    plt.plot(xr,yr, 'red',lw=1,linestyle='dotted')
-                else:
-                    plt.plot(xr,yr, 'white',lw=1,linestyle='dotted')
-                    # pass
+                # if float(abs(eqdata['deltaphi'].iloc[i])) > 60:
+                #     plt.plot(xr,yr, 'black',lw=1,linestyle='dotted',alpha=0.5)
+                # else:
+                #     plt.plot(xr,yr, 'black',lw=1,linestyle='dotted',alpha=0.5)
+                #     # pass
+                if eqphase == 'SKS':
+                    plt.plot(xr,yr, 'black',lw=1,linestyle='dotted',alpha=0.5)
+                if eqphase == 'S':
+                    plt.plot(xr,yr, 'red',lw=1,linestyle='dotted',alpha=0.5)
+
+
 
         # fig.plot(x=np.rad2deg(arrival.path["dist"]+start_offset),y=np.array(r_earth-arrival.path["depth"]))
 
@@ -484,7 +579,7 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
 
     # add hotspots
     # how close a hotspot must be to be "in plane" (degrees)
-    dist_thresh = 3.5
+    dist_thresh = 0
     hotspots_to_plot = []
     if named_hotspots is None:
         with open('%s/hotspots.json' % (get_tectonics_path())) as f:
@@ -603,6 +698,10 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
         #   zorder=1000, ms=4)
         plot_gc_clean(m, p1, p2, 1.0, color='k', lw=1.0, linestyle='-')
 
+        # Mark ORIGINAL station location on map
+        m.scatter(*m(p1_orig[0], p1_orig[1]), color='red', marker='v',
+                 s=100, edgecolor='black', linewidth=2, zorder=1002)
+
         # draw waypoints
         for i in range(num_waypoints):
             lon, lat = waypoint_locs[i]
@@ -619,7 +718,7 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
         # plt.savefig('%s/xsec_dln%s_%s.%s.vmax_%.1f.%s' % (
         #     save_path, param_name, xsec_name, model_config['name'],
         #     vmax, save_ext), **save_kwargs)
-        plt.savefig(save_path+'/tonga_lat25_highres.png',dpi=1200)
+        plt.savefig(save_path+'/BBOO_chile_SKS_and_S_raypaths_20260504.png',dpi=1200)
 
     return fig
 
@@ -640,10 +739,10 @@ def define_and_plot_xsecs():
     #B configuration for map
 # if using "ortho" choose lon_0 and lat_0 to be the middle of the plotted
 # great circle (br 05/08/19)
-    basemap_args = {
-#        'projection': 'merc',
-        'projection': 'ortho','lon_0':170.,'lat_0': 10.0,
-        'resolution': 'c'}
+#     basemap_args = {
+# #        'projection': 'merc',
+#         'projection': 'ortho','lon_0':140.,'lat_0': -45.0,
+#         'resolution': 'c'}
         #'llcrnrlon': 135.0, 'llcrnrlat': -45.0,
         #'urcrnrlon': 210.0, 'urcrnrlat':   0.0,
         #'lat_ts': -20.0}
@@ -659,9 +758,18 @@ def define_and_plot_xsecs():
 #     p2 = 141.5964, -31.8757 #stka station
 # # -31.8757, 141.596405
 #     p1 = 115.0, 10.0 #phillipine subdcution 
+    # p2 = 125.64, -18.1 #FITZ station 
 
-    p2 = 125.64, -18.1 #FITZ station 
-    p1 = -176.0, -25.0 #tonga subduction 
+    # p1 = 151.63 , -30.412 #ARMA station
+    # # p1 = -176.0, -25.0 #tonga subduction 
+    # p2 = -71.71 , -32.75 #mean values of sources for chile subduction strange SKS deep mantle contamination
+    # # p2 = -179 , -20.0 #tonga trench
+
+    p1 = 136.06 , -32.81 #BBOO station
+    p2 = -70.6 , -32.98 #mean values of sources for chile subduction strange SKS deep mantle contamination for BBOO
+
+    mid_lon, mid_lat = shoot(p1, delaz(p1, p2)[0]/2, delaz(p1, p2)[1])
+    basemap_args = {'projection': 'ortho', 'lon_0': mid_lon, 'lat_0': mid_lat+15, 'resolution': 'c'}
     
 # label for section (typically used in rendering movie frames)
     section_label = ''
