@@ -439,7 +439,9 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
     # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/ARMA_tonga_deep_S_events.txt',sep=',')
     # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/ARMA_evbaz_120_to_150_events.txt',sep=',')
 
-    eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/BBOO_evbaz_140_to_165_events.txt',sep=',')
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/BBOO_evbaz_140_to_165_events.txt',sep=',')
+    eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/EIDS_evbaz_135_to_150_events.txt',sep=',')
+
 
 
 
@@ -718,7 +720,7 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
         # plt.savefig('%s/xsec_dln%s_%s.%s.vmax_%.1f.%s' % (
         #     save_path, param_name, xsec_name, model_config['name'],
         #     vmax, save_ext), **save_kwargs)
-        plt.savefig(save_path+'/BBOO_chile_SKS_and_S_raypaths_20260504.png',dpi=1200)
+        plt.savefig(save_path+'/EIDS_chile_SKS_and_S_raypaths_20260505.png',dpi=1200)
 
     return fig
 
@@ -765,8 +767,11 @@ def define_and_plot_xsecs():
     # p2 = -71.71 , -32.75 #mean values of sources for chile subduction strange SKS deep mantle contamination
     # # p2 = -179 , -20.0 #tonga trench
 
-    p1 = 136.06 , -32.81 #BBOO station
-    p2 = -70.6 , -32.98 #mean values of sources for chile subduction strange SKS deep mantle contamination for BBOO
+    # p1 = 136.06 , -32.81 #BBOO station
+    # p2 = -70.6 , -32.98 #mean values of sources for chile subduction strange SKS deep mantle contamination for BBOO
+
+    p1 = 151.09 , -25.37 #EIDS station
+    p2 = -70.86 , -32.6 #mean values of sources for chile subduction strange SKS deep mantle contamination for EIDS
 
     mid_lon, mid_lat = shoot(p1, delaz(p1, p2)[0]/2, delaz(p1, p2)[1])
     basemap_args = {'projection': 'ortho', 'lon_0': mid_lon, 'lat_0': mid_lat+15, 'resolution': 'c'}

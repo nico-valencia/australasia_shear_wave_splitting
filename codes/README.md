@@ -106,4 +106,149 @@ basic table
 
 comprehensive table
 
-station name    network name    lat     lon     phases used     phi     dt  comment     # of measurements
+station name    network name    lat     lon     phases used     phi     dt  comment                                         # of measurements
+
+ARMA            AU                              SKS, deep S                 no SKS 120-150
+
+AS31            AU                              SKS                         deep S visually consistent
+
+BBOO            AU                              SKS, deep S                 no SKS 145-165, no S > 200
+
+COEN            AU                              SKS, deep S                 see previous comment w/ Jonathan
+
+EIDS            AU                              SKS, deep S                 SI > 1.5 is removed (too strong)
+
+MNAI            GE
+
+MTN             AU                              SKS, deep S                 15 bin width has larger dt than 20 bin width
+
+MULG            AU                              all phases                  15 bin width has larger dt than 20 bin width
+
+NOUC            G                               SKS, deep S                 started tracking map events HERE
+
+QIS             AU                              SKS                         best one for just SKS 
+
+SNZO            IU                              all phases
+
+STKA            AU                              SKS, deep S                 10 bin largest dt, then 15, then 20
+
+TOO             AU                              SKS, deep S                 need to remove deep S outliers still
+
+XMI             AU                              all phases                  bin width 30 best results...    
+
+XMIS            AU                              all phases                  bin width 30 too 
+
+
+
+
+
+
+
+
+
+
+spring_updates.ipynb filters per station in cell 
+
+ARMA: 
+
+
+Meeting Notes May 5 2026
+
+review student T distribution and how necessary this is 
+
+Barbara suggests a simple inverse std (1/std) instead of my 'margin' , compare the two methods
+
+NOUC: both SKS and deep S roduce the same result, but this shows the larger spread in deep S due to source side anisotropy, yet it can still help azimuthal coverage
+
+quantify removal of SKS scatters: variance reductance
+
+reduce bins to 1 per azimtuhal bin. average the uncertainties after doing it by phase to simplify matters
+
+END OF NOTES
+
+
+
+May 7 2026 
+
+changed weighting scheme for binned measurements 
+
+SI err is used for filtering, and also a weighted mean and std 
+
+std of bin is used as sigma value, which is inverse weight for curve fit 
+
+ARMA without scatter cov matrix:    phi 7.2 dt 0.53
+
+[[ 5.68828754e+00 -8.70041385e-03] 
+ [-8.70041385e-03  3.97494158e-03]]
+[2.38501311 0.06304714]
+
+ARMA with scatter:                  phi 7.3 dt 0.49
+[[ 6.69977953e+00 -7.78848433e-03]
+ [-7.78848433e-03  3.51463970e-03]]
+[2.58839323 0.0592844 ]
+
+
+BBOO with scatter SKS and S above 200: phi 67.3 dt 0.34 
+[[4.64078705e+01 4.29821957e-02]
+ [4.29821957e-02 1.18114243e-04]]
+[6.81233224 0.01086804]
+
+BBOO without scatter and no S above 200: phi 61.0 dt 0.34
+[[ 7.78396944e+01 -1.28783174e-01]
+ [-1.28783174e-01  2.92594416e-04]]
+[8.82268068 0.01710539]
+
+
+# Summary of Changes to Binning Schema and Splitting Parameter Inversion
+
+## Overview
+
+We have made significant improvements to both the data binning methodology and the parameter inversion approach for shear-wave splitting analysis. These changes address statistical rigor, computational efficiency, and alignment with standard practices in the field.
+
+## Changes to Binning Statistics
+
+Previously, we calculated 95% confidence intervals for each azimuthal bin using the Student's t-distribution. This approach computed a critical t-value based on the degrees of freedom (n-1) and used it to calculate a margin of error as `margin = t_crit × (std / √n)`. This margin was then used as the uncertainty weight passed to the fitting routine. However, following discussions with advisors, we recognized that this approach did not fully account for the individual measurement uncertainties within each bin and that the confidence interval formulation was unnecessarily complex for our purposes.
+
+We have now transitioned to using weighted statistics that incorporate the measurement errors of individual splitting intensity values. For each bin, we calculate a weighted mean and weighted standard deviation using the `weighted_mean_and_std()` function, which takes both the splitting intensity values and their individual errors as inputs. The weighted standard deviation (`std_w`) directly represents the uncertainty in the bin's mean value while accounting for the varying quality of individual measurements. This weighted standard deviation is now used as the uncertainty metric (`sigma`) passed to the fitting routine, providing a more intuitive and statistically appropriate representation of data quality. The variance is simply the square of this weighted standard deviation, and we weight each bin by inverse variance (1/σ²) during the inversion, which is standard practice in weighted least squares.
+
+## Changes to the Inversion Method
+
+The most significant methodological change involves switching from nonlinear least squares optimization to direct linear least squares inversion. Originally, we used scipy's `curve_fit` function to fit the splitting intensity model `SI(θ) = δt·|sin[2(θ-φ)]| + tilt` through iterative optimization. This nonlinear approach required an initial parameter guess, could potentially get stuck in local minima, and was computationally slower due to its iterative nature. More importantly, after discussions with advisors, we learned that this approach is less standard in the seismological literature for this particular problem.
+
+We have now implemented a linear least squares solution by exploiting the trigonometric identity that allows us to rewrite the splitting intensity model in a linear form. Specifically, we expand `sin[2(θ-φ)] = sin(2θ)·cos(2φ) - cos(2θ)·sin(2φ)`, which can be rearranged as `SI(θ) = A·sin(2θ) + B·cos(2θ)`, where `A = δt·cos(2φ)` and `B = -δt·sin(2φ)`. This formulation is linear in the coefficients A and B, allowing us to construct a design matrix X with columns `[sin(2θ), cos(2θ)]` and solve the system directly using the weighted normal equations `(X^T W X)p = X^T W y`, where W is a diagonal weight matrix containing the inverse variances (1/σᵢ²) and p is the parameter vector [A, B].
+
+Once we obtain A and B from the linear solution, we convert back to the physical parameters using `δt = √(A² + B²)` and `φ = 0.5 · arctan2(-B, A)`. The negative sign in the arctan2 function is critical and arises from the fact that B = -δt·sin(2φ) in the trigonometric expansion. This linear approach requires no initial guess, always finds the global minimum, is computationally faster through direct matrix inversion, and represents the standard approach expected by reviewers in the seismic anisotropy community.
+
+## Model Simplification
+
+We have also simplified the model by removing the tilt parameter. Previously, our model included a baseline offset term (`SI = δt·|sin[2(θ-φ)]| + tilt`), fitting for three parameters simultaneously. However, we found that the tilt parameter could trade off with the delay time, potentially absorbing some of the amplitude and leading to parameter correlation. The current two-parameter model (`SI = δt·sin[2(θ-φ)]`) is simpler, avoids these trade-offs, and is more standard in the splitting literature. Additionally, we removed the absolute value from the sine function, as the linearized form naturally handles the azimuthal variation without requiring this constraint.
+
+## Technical Corrections
+
+Several technical issues were identified and corrected during this transition. First, we discovered a parameter name mismatch between `analyze_station()` (which was passing `weights=weights`) and `bin_measurements()` (which expected `phase_weights=None`), resulting in a TypeError that prevented the binning function from executing. This has been corrected to use consistent naming (`phase_weights`) throughout.
+
+Second, we initially had an incorrect sign convention in converting from linear parameters (A, B) to the physical fast direction (φ). Using `arctan2(B, A)` was giving φ ≈ 173° instead of the expected φ ≈ 7°. After testing, we confirmed that the correct formulation is `arctan2(-B, A)`, which accounts for the negative sign in the relationship `B = -δt·sin(2φ)`.
+
+Third, the Jacobian matrix used for uncertainty propagation from (A, B) to (φ, δt) initially missed the radians-to-degrees conversion factor. The correct Jacobian must include the factor 180/π ≈ 57.3 when computing derivatives of φ with respect to A and B, since φ is reported in degrees while the arctan2 function works in radians. Without this correction, the uncertainty in φ was underestimated by nearly a factor of 60.
+
+Finally, we clarified the use of the `absolute_sigma` parameter in curve_fit. The default setting (`absolute_sigma=False`) rescales the returned covariance matrix based on the reduced chi-squared of the fit, essentially second-guessing the provided uncertainties. Since we carefully calculate realistic uncertainties for each bin, we should use `absolute_sigma=True` to ensure the returned parameter uncertainties directly reflect our stated data quality.
+
+## Error Bar Visualization
+
+For plotting purposes, we recommend using error bars of `2×std` (twice the weighted standard deviation) to represent approximately 95% confidence intervals. The single standard deviation error bars, while statistically accurate, are often too small to be easily visible in figures. Using 2σ provides better visibility while maintaining statistical meaning, as this corresponds to roughly 95% confidence for large sample sizes and is standard practice in many geophysical publications.
+
+## Validation and Results
+
+The linear least squares approach has been validated against the curve_fit method with proper settings (`absolute_sigma=True`). For a representative station, curve_fit yielded φ = 7.0 ± 2.4° and δt = 0.53 ± 0.06 s, while the linear least squares method gives φ = 7.2 ± 2.4° and δt = 0.53 ± 0.06 s. The results are essentially identical, confirming that the linear approach correctly reproduces the nonlinear optimization when both are properly configured. The covariance matrices also show negligible correlation between φ and δt (r ≈ 0.06), indicating that both parameters are independently well-constrained by the data.
+
+## Summary
+
+These changes represent a shift toward more statistically rigorous, computationally efficient, and professionally standard methods for analyzing shear-wave splitting. The weighted binning statistics properly account for measurement quality, the linear least squares inversion is transparent and aligns with field conventions, and the simplified two-parameter model avoids unnecessary complexity. All technical issues have been resolved, and results have been validated against alternative methods. This updated workflow is well-suited for thesis documentation and peer-reviewed publication.
+
+
+
+
+GEBCO Bathymetric Compilation Group 2026(2026). The GEBCO_2026 Grid - a continuous terrain model for oceans and land at 15 arc-second intervals. NERC EDS British Oceanographic Data Centre NOC. doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa
+
+
+

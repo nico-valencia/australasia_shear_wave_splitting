@@ -15,7 +15,7 @@ data_type   = 'complete'
 data_tag    = 'swp'
 station     = 'swp'
 freqType    = "normal"
-date        = 'oct3'
+date        = '04032026'
 
 events_file     = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_windowed_events_{freqType}_{date}.txt'
 station_file    = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_stations_info.txt'
@@ -49,14 +49,38 @@ def measure_waveform(row,freqType = freqType):
         if len(north) % 2 == 0: north = north[:-1]
         if len(east) % 2 == 0: east = east[:-1]
 
-        evwindowstart = row['windowstart']
-        evwindowend = row['windowend']
-        pair = sw.Pair(north, east, delta=sample_interval)
-        # print(f"length of pair before setting window:{len(pair.x)}")
-        pair.set_window(float(evwindowstart), float(evwindowend))
-        # print(f"length of pair after setting window:{len(pair.x)}")
-        chopped_pair = pair.chop()
-        # print(f"Length of pair after chopping: {len(chopped_pair.x)}")
+        ############ mar 16 2026 changes ############
+
+        # Convert time to sample indices (integers)
+        evwindowstart = float(row['windowstart'])
+        evwindowend = float(row['windowend'])
+        
+        start_idx = int(evwindowstart / sample_interval)
+        end_idx = int(evwindowend / sample_interval)
+        
+        # Manually chop the waveforms
+        north_chopped = north[start_idx:end_idx]
+        east_chopped = east[start_idx:end_idx]
+        
+        # Make odd length
+        if len(north_chopped) % 2 == 0: 
+            north_chopped = north_chopped[:-1]
+            east_chopped = east_chopped[:-1]
+        
+        # Create pair from chopped data
+        chopped_pair = sw.Pair(north_chopped, east_chopped, delta=sample_interval)
+        ################
+
+        # evwindowstart = row['windowstart']
+        # evwindowend = row['windowend']
+        # print(f"windowstart: {row['windowstart']}")
+        # print(f"windowend: {row['windowend']}")
+        # pair = sw.Pair(north, east, delta=sample_interval)
+        # # print(f"length of pair before setting window:{len(pair.x)}")
+        # pair.set_window(float(evwindowstart), float(evwindowend))
+        # # print(f"length of pair after setting window:{len(pair.x)}")
+        # chopped_pair = pair.chop()
+        # # print(f"Length of pair after chopping: {len(chopped_pair.x)}"
 
 
         beta = ((((float(row['calcbaz']) - float(row['evbaz'])) % 180) + 90) % 180) - 90
@@ -70,10 +94,11 @@ def measure_waveform(row,freqType = freqType):
         
         return beta,wiggleSIlow_act , wiggleSI_act , wiggleSIhigh_act,wiggleSIlow_calc, wiggleSI_calc, wiggleSIhigh_calc
 
-    except Exception:
+    except Exception as exception:
+        print(exception)
         return (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
 
-def parallelize_dataframe(df, func, max_workers=32):
+def parallelize_dataframe(df, func, max_workers=16):
     input_data = df.to_dict('records')
     results = [None] * len(input_data)
     
@@ -86,7 +111,7 @@ def parallelize_dataframe(df, func, max_workers=32):
     return pd.DataFrame(results, index=df.index)
 
 # ----------------- RUN PARALLEL GEODETICS -----------------
-print("Computing geodetic metrics...")
+print("Measuring SI of waveforms...")
 eventdata[['deltaphi','wiggleSIlow_act','wiggleSI_act','wiggleSIhigh_act','wiggleSIlow_calc','wiggleSI_calc','wiggleSIhigh_calc']] = parallelize_dataframe(eventdata, measure_waveform)
 
 # ----------------- SAVE -----------------

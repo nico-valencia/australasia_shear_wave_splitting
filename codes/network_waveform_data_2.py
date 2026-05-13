@@ -11,11 +11,11 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ----------------- PARAMETERS -----------------
 data_type   = 'complete'
-data_tag    = 'swp'
-station     = 'swp'
+data_tag    = 'AU'
+station     = 'australia'
 phase       = ['S', 'SKS']
 model_name  = "iasp91"
-date        = 'oct3'
+date        = '04032026'
 
 print('Loading in filepaths for station and event data.')
 

@@ -9,7 +9,7 @@ import traceback
 from obspy import read
 import splitwavepy as sw
 import numpy as np
-from support import covar_particle_motion, envelopes
+from support import covar_particle_motion, envelopes, envelopes_rms
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -19,7 +19,7 @@ data_type   = 'complete'
 data_tag    = 'swp'
 station     = 'swp'
 freqType    = "normal"
-date        = 'oct3'
+date        = '04032026'
 
 events_file     = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_events_{date}.txt'
 station_file    = f'/work/gcl3/BR/nicolasv03/senior_thesis/data/{data_type}/{station}/{data_tag}_stations_info.txt'
@@ -67,8 +67,15 @@ def process_waveform(row,freqType=freqType):
         if len(north) % 2 == 0: north = north[:-1]
         if len(east) % 2 == 0: east = east[:-1]
 
-        n_sta_lta = classic_sta_lta(north,100,400)
-        e_sta_lta = classic_sta_lta(east,100,400)
+        n_sta_lta = classic_sta_lta(north,30,600)
+        e_sta_lta = classic_sta_lta(east,30,600)
+
+        '''
+        Adjusting values here for STA LTA 3/16/2026
+        before it was 100 and 400 (5 and 20 seconds)
+
+        now it is gonna be 30 and 600 (1.5 and 30 seconds)
+        '''
 
         time = list(range(len(north)))
         sum_sta_lta = n_sta_lta+e_sta_lta
@@ -81,8 +88,14 @@ def process_waveform(row,freqType=freqType):
         #     return None
 
         
-        windowstart = phase_ind - 300 
-        windowend = phase_ind + 300
+        windowstart = phase_ind - 200 
+        windowend = phase_ind + 400
+
+        '''
+        Adjusting window sizing 4/3/2026
+        before it was 300 samples to the left and right (30 second window, 15s each side)
+        now it is 200 samples to the left and 400 to the right (30 second window, 10s and 20s for the sides respectively)
+        '''
 
         # Particle motion
         pm_wf.detrend('demean')
@@ -102,7 +115,11 @@ def process_waveform(row,freqType=freqType):
 
          # Envelope / SNR
         pair = sw.Pair(north, east, delta=sample_interval)
-        mean_snr, max_snr, ne_env, mean_snr2, max_snr2 = envelopes(pair, float(row['evbaz']), calcbaz, windowstart, windowend)
+        # mean_snr, max_snr, ne_env, mean_snr2, max_snr2 = envelopes(pair, float(row['evbaz']), calcbaz, windowstart, windowend)
+
+        # added rms to envelope measurement instead of median, gonna compare it (march 11,2026)
+        mean_snr, mean_snr2, ne_env = envelopes_rms(pair, float(row['evbaz']), calcbaz, windowstart, windowend)
+
 
         return windowstart*sample_interval,windowend*sample_interval,calcbaz,sta_lta_max_time,mean_snr,mean_snr2,xlam1/xlam2,delta_travel
 
@@ -114,7 +131,7 @@ def process_waveform(row,freqType=freqType):
         return (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
         
 
-def parallelize_dataframe(df, func, max_workers=32):
+def parallelize_dataframe(df, func, max_workers=16):
     input_data = df.to_dict('records')
     results = [None] * len(input_data)
     

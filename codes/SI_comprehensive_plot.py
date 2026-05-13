@@ -42,7 +42,7 @@ networkName = 'AU'
 stationName = 'australia'
 freqType = 'normal'
 manual = False
-stat = 'CMSA'
+stat = 'BBOO'
 
 
 dir_stations  = '../data/'+dataType+'/'+stationName+'/'+networkName+'_stations_info.txt'
@@ -77,8 +77,8 @@ ravel   = False     # False: 0 - 180 azimuth range, True: 0 - 360 azimuth range
 single  = True      # single layer or double layer of anisotropy 
 
 snr_threshold = 4           # Signal / Noise Filter (Restivo & Helffrich 1999)
-snrbefore_threshold = 1.5   # Signal Noise Ratio before phase window 
-snrafter_threshold = 1.5    # Signal Noise Ratio after phase window 
+snrbefore_threshold = 1.0   # Signal Noise Ratio before phase window 
+snrafter_threshold = 1.0    # Signal Noise Ratio after phase window 
 sta_lta_threshold = 4      # STA/LTA minimum (phase prominence)
 ellipticity_threshold = 40  # ellipticity of particle motion (needs to be worked on)
 mag_threshold = 7.0         # eq magnitude maximum (larger eq's source mechanisms contaminate signal)
@@ -90,14 +90,16 @@ sample_rate = 1             # sample rate of waveforms, needed to rescale SI? as
 # eventData = eventData[eventData['delta_travel'] < 20]
 # # eventData = eventData[eventData['beta']<10]
 # eventData = eventData[eventData['evincident']<25]
-eventData = eventData[eventData['evpiercedepth']>=1500]
-# eventData = eventData[eventData['evepic']>70]
+eventData = eventData[eventData['evepic']>60]
+# eventData = eventData[eventData['evpiercedepth']>=1500]
+
+# eventData = eventData[eventData['evdp']>500]
 
 # eventData = eventData[eventData['snr'] > snr_threshold]
-# eventData = eventData[eventData['snrbefore'] > snrbefore_threshold]
-# eventData = eventData[eventData['snrafter'] > snrafter_threshold]
-# eventData = eventData[eventData['sta_lta'] > sta_lta_threshold]
-# eventData = eventData[eventData['evmg'] < mag_threshold]
+eventData = eventData[eventData['snrbefore'] > snrbefore_threshold]
+eventData = eventData[eventData['snrafter'] > snrafter_threshold]
+eventData = eventData[eventData['sta_lta'] > sta_lta_threshold]
+eventData = eventData[eventData['evmg'] < mag_threshold]
 # eventData = eventData[eventData['ellipticity'] > ellipticity_threshold]
 
 # calculate SI errors and also trunate 
@@ -326,8 +328,8 @@ for station_name in station_names:
 
         
 
-        if dt < 0.5:
-            continue
+        # if dt < 0.5:
+        #     continue
 
 
         # plotting graph with all indivudual measurements and SI errors
@@ -544,8 +546,11 @@ for station_name in station_names:
 
 
         fig.tight_layout(rect=[0.02, 0.03, 1, 0.95])
+        plt.savefig('../data/complete/'+stationName+'/nov_19_25/SI_'+station_name+'_measurement_plots.png',dpi=200,bbox_inches='tight')
+
+
         # fig.tight_layout()
-        plt.show()
+        # plt.show()
 
 
 

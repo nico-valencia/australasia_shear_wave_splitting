@@ -43,9 +43,9 @@ minlat, maxlat = -50.00, 50.00
 # minlon, maxlon = 110.00, 160.00
 # minlat, maxlat = -45.00, -10.00
 
-# indonesia coordinates
-minlon, maxlon = 90.00, 135.00
-minlat, maxlat = -15.00, 10.00
+# # indonesia coordinates
+# minlon, maxlon = 90.00, 135.00
+# minlat, maxlat = -15.00, 10.00
 
 
 import re
@@ -282,5 +282,5 @@ sc = ax.scatter(combined_df['Longitude'], combined_df['Latitude'],
 cbar = fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='horizontal', shrink=0.3, pad=0.05)
 cbar.set_label('Delay Time (s)', fontsize=14)
 
-plt.title("Indonesia Splitting Results",fontsize=25)
-fig.savefig('./test_KA_splitting_map2.png', dpi=720) #original dpi=300
+# plt.title("Indonesia Splitting Results",fontsize=25)
+fig.savefig('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/test_map.png', dpi=720) #original dpi=300

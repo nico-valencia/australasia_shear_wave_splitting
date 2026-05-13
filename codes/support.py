@@ -26,13 +26,18 @@ from scipy.fftpack import fft
 from obspy.taup import TauPyModel
 model = TauPyModel(model="iasp91")
 
+from pyproj import Geod  # ← ADD THIS LINE
+import cartopy.crs as ccrs
+
+
+
 
 
 # import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-# import cartopy.feature as cfeature
-from pyproj import Geod
-# import pandas as pd
+
+# turn these back on when not doing synthetic work, just turning it off for now to avoid dependency issues
+# import cartopy.crs as ccrs
+# from pyproj import Geod
 
 #################### particle motion for plot_trace ####################
 
@@ -705,7 +710,44 @@ def envelopes(pair,evbaz,calcbaz,windowstart,windowend,**kwargs):
         return [0,0,0,0,0]
 
 
+def envelopes_rms(pair, evbaz, calcbaz, windowstart, windowend, **kwargs):
+    '''
+    calculate envelope of phase window and noise window
+    looks at snr for orthogonal seismograph components
+    november 11 2024 nico valencia
+
+    1. get 1* data pair correlating with the 1* coordinate system
+    2. add envelope in quadrature for 2d vector of energy 
+    3. get snr ratio based on RMS of envelope
+
+    *** envelope is rotationally invariant!!! 
+    only need to measure one of these coordinate systems!!!
+    '''
     
+    data = copy.deepcopy(pair)
+    windowstart = int(windowstart)
+    windowend = int(windowend)
+
+    try:
+        # NORTH AND EAST
+        n_envelope = envelope(data.x)
+        e_envelope = envelope(data.y)
+
+        ne_env = np.sqrt(n_envelope**2 + e_envelope**2)
+
+        # RMS SNR
+        signal_rms = np.sqrt(np.mean(ne_env[windowstart:windowend]**2))
+        noise_before_rms = np.sqrt(np.mean(ne_env[20:windowstart]**2))
+        noise_after_rms = np.sqrt(np.mean(ne_env[windowend:-20]**2))
+        
+        ne_rms_snr = signal_rms / noise_before_rms if noise_before_rms > 0 else 0
+        ne_rms_snr2 = signal_rms / noise_after_rms if noise_after_rms > 0 else 0
+
+        return [ne_rms_snr, ne_rms_snr2, ne_env] 
+    
+    except Exception as exception: 
+        print(exception)
+        return [0, 0, 0]
 
 
 
@@ -750,8 +792,10 @@ def SplittingIntensity(pair,baz):
     # root mean square error 
     rdelta = np.sum((T + 0.5*SplitIntensity*rd)**2)
     ndf = GetNDF(T,len(T),len(T))
+
     # ndf = 0 # place holder for now, need to define what ndf is !!!! getndf(T,len(T),len(rd))
     variance = rdelta / (ndf -1)
+
 
     tin = stats_t.ppf(0.95,ndf-1)
 
@@ -794,13 +838,15 @@ def GetNDF(S,n,norig):
     x = np.linspace(1, len(A), n2)
     interp_func = interp1d(np.arange(1, len(A) + 1), A.flatten(), kind='linear', fill_value='extrapolate')
     An = interp_func(x)
+
     
     # Compute FFT
     OUT = fft(An)
 
     # Compute the number of degrees of freedom
-    nf = round((n2 + 2) / 2)  # Only take half of the spectrum to Nyquist frequency
+    nf = int(round((n2 + 2) / 2))  # Only take half of the spectrum to Nyquist frequency
     mag = np.abs(OUT[:nf])
+
     
     E2 = np.sum(mag**2)
     E4 = np.sum(mag**4)
@@ -810,6 +856,7 @@ def GetNDF(S,n,norig):
     
     # Compute the estimated NDF
     NDF = round(2 * (2 * E2 * E2 / E4 - 1))
+
     
     if NDF > norig:
         raise ValueError("get_ndf: NDF > NORIG")
@@ -861,7 +908,7 @@ def plot_great_circle_ray_path(eq_lat, eq_lon, st_lat, st_lon, phase_type = None
     if phase_type == 'SKS':
         label = 'SKS phase' if 'SKS phase' not in existing_labels else None
 
-        ax.plot(eq_lon, eq_lat, 'b^', marker = '*',markersize=6, transform=ccrs.PlateCarree(),label=label)
+        ax.plot(eq_lon, eq_lat, 'b', marker = '*',markersize=6, transform=ccrs.PlateCarree(),label=label)
             
         # ax.plot(eq_lon, eq_lat, 'b^', marker = '*',markersize=6, transform=ccrs.Mollweide())
 
@@ -871,14 +918,14 @@ def plot_great_circle_ray_path(eq_lat, eq_lon, st_lat, st_lon, phase_type = None
     if (phase_type == 'S') & (ev_depth < s_depth):
       
         label = 'S shallow' if 'S shallow' not in existing_labels else None
-        ax.plot(eq_lon, eq_lat, 'ro', marker ='*',markersize=6, transform=ccrs.PlateCarree(),label=label)
+        ax.plot(eq_lon, eq_lat, 'r', marker ='*',markersize=6, transform=ccrs.PlateCarree(),label=label)
         # Plot great circle path
         ax.plot(lons, lats, 'k--', linewidth=0.5, alpha=0.5,transform=ccrs.Geodetic())
 
     if (phase_type == 'S') & (ev_depth >= s_depth):
       
         label = 'S deep' if 'S deep' not in existing_labels else None
-        ax.plot(eq_lon, eq_lat, 'go', marker ='*',markersize=6, transform=ccrs.PlateCarree(),label=label)
+        ax.plot(eq_lon, eq_lat, 'g', marker ='*',markersize=6, transform=ccrs.PlateCarree(),label=label)
         # Plot great circle path
         ax.plot(lons, lats, 'k--', linewidth=0.5, alpha=0.5,transform=ccrs.Geodetic())
       

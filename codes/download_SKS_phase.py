@@ -542,8 +542,8 @@ class DownloadData:
         # except Exception:
         #     return 'failure'
 
-directory = 'senior_thesis/data/complete/swp2' 
-station = 'swp2' 
+directory = 'senior_thesis/data/complete/PacificOrca' 
+station = 'ORCA' 
 
 
 if __name__=="__main__":
@@ -555,25 +555,25 @@ if __name__=="__main__":
 
         # clientlist = ['IRIS','GEOFON','AUSPASS'],
         # clientlist = list(URL_MAPPINGS.keys()),
-        minlongitude = 100,
+        minlongitude = -180,
         maxlongitude = 180,
-        minlatitude = -50,
-        maxlatitude = 20,
+        minlatitude = -90,
+        maxlatitude = 90,
         inventorytxtfile = '../../'+directory+'/'+station+'_stations_info.txt',
         catalogxmlloc= '../../'+directory+'/'+station+'_event_info_xml',
         catalogtxtloc= '../../'+directory+'/'+station+'_event_info/',
     )
 
     # # ## download the stations information
-    # downloadclass.get_stnxml(network='*', station='*', level = 'response')
+    # downloadclass.get_stnxml(network='7B', station='*', level = 'response')
 
     # ## download event catalog corresponding to each station   #make sure to check the assigned epicentral distances!!!
     # downloadclass.obtain_events(
-    #         minmagnitude    = 6,
-    #         maxmagnitude    = 8,
+    #         minmagnitude    = 5,
+    #         maxmagnitude    = 10,
     #         minradius       = 90, 
     #         maxradius       = 120,
-    #         minimum_operation_time_station = 3)
+    #         minimum_operation_time_station = 0)
    
     downloadclass.download_all_data(
         datafileloc='../../'+directory+'/'+station+'_SKS_waveforms',
@@ -586,3 +586,20 @@ if __name__=="__main__":
         resampleRate = 20.0, 
         phase = 'SKS',
         waveform_offset = 60.0)
+    
+
+
+
+
+# swp geographical bounds
+# minlongitude = 100,
+# maxlongitude = 180,
+# minlatitude = -50,
+# maxlatitude = 20,
+
+# swp event bounds
+# minmagnitude    = 6,
+# maxmagnitude    = 8,
+# minradius       = 90, 
+# maxradius       = 120,
+# minimum_operation_time_station = 3
