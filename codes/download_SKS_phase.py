@@ -542,8 +542,8 @@ class DownloadData:
         # except Exception:
         #     return 'failure'
 
-directory = 'senior_thesis/data/complete/PacificOrca' 
-station = 'ORCA' 
+directory = 'senior_thesis/data/complete/swp' 
+station = 'swp' 
 
 
 if __name__=="__main__":
