@@ -252,3 +252,103 @@ GEBCO Bathymetric Compilation Group 2026(2026). The GEBCO_2026 Grid - a continuo
 
 
 
+STATION_PHASE_MAP = {
+    "ARMA": "sks_deep", 
+    "AS31": "sks", 
+    "BBOO": "sks_deep",
+    "BCON": "sks_deep", 
+    "BKB": "all",
+    "BKNI": "complex",
+    "BLDU": "sks",
+    "CAN": "sks_deep",
+    "CMSA": "complex",
+    "CNB": "sks_deep",
+    "COEN": "sks",
+    "CTA": "complex",
+    "CTAO": "complex",
+    "EIDS": "sks_deep",
+    "FAKI": "complex",
+    "FITZ": "sks_deep",
+    "FORT": "all",
+    "GIRL": "all",
+    "GUMO": "complex",
+    "HTT": "complex",
+    "INKA": "complex",
+    "JAGI": "complex",
+    "KDU": "complex",
+    "KLGGI": "sks_deep",
+    "KMBL": "complex",
+    "KNRA": "complex",
+    "LCRK": "complex",
+    "LHI": "complex",
+    "LUWI": "complex",
+    "MANU": "complex",
+    "MEEK": "complex",
+    "MILA": "sks_deep",
+    "MMRI": "sks_deep",
+    "MNAI": "all",
+    "MOO": "all",
+    "MORW": "complex",
+    "MTN": "sks_deep",
+    "MULG": "complex",
+    "MUN": "sks_deep",
+    "NFK": "complex",
+    "NOUC": "sks_deep",
+    "NWAO": "complex",
+    "OOD": "complex",
+    "PMBI": "complex", #potentially a null station?
+    "PMG": "complex",
+    "QIS": "sks",
+    "QLP": "complex",
+    "RABL": "complex",
+    "RIV": "complex", # another potential null
+    "SAUI": "all",
+    "SMRI": "complex",
+    "SNZO": "all",
+    "SOEI": "complex",
+    "STKA": "sks_deep",
+    "TNTI": "sks_deep",
+    "TOO": "sks_deep",
+    "TROP": "sks_deep",
+    "UGM": "complex",
+    "WB2": "complex",   # good null
+    "WRKA": "complex", # super good null
+    "YNG": "PHASETYPE",
+    "XMI": "all",
+    "XMIS": "all",
+    "YNG": "sks_deep",
+    }
+
+
+
+July 24 2026 
+
+genuinely forgetting which SNR criteria I used to generate the measurements I currently have
+
+test1: 3.0 and 0.0 
+
+test2: 1.5 and 1.5 
+
+gonna make some plots and check it out!
+
+
+test3: 3.0 and 1.5 , ~5800 measurements 
+
+test4: 3.0 and 1.0 , ~8000 measurements
+
+
+some notes on this: test 1 was the criteria used for all of the mapping I have made so far. this completely ignores the coda of the phase or other energy that can contaminate our phase arrival. test 2 has an SNR too little that adds a lot of phases to our already pretty well defined stations. 
+
+test 3 and 4 make more sense, in order to have a prominent phase arrival but also an attempt to remove noise on the back half, test 4 is more relaxed with the amount of contaminated energy allowed on the back half. 
+
+AS OF JULY 28 2026: TEST 4 CRITERIA IS BEST FOR MY PURPOSES
+
+visually everything looks the same except BLDU has a 90° shift in fast axis...check this with Jonathan and see what he thinks
+
+Jul 30 2026 
+
+Number of Seismic Stations in eventData: 115
+Number of Stations After Applying waveform filtering criteria: 83 
+Number of stations within the station_keys dictionary: 59
+
+83 includes stations after filtering but are not in the dictionary (this is just personal assessment of data quality per station, no filtering criteria here besides me and jonathan)

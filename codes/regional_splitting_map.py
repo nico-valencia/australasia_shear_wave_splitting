@@ -12,35 +12,90 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from pyproj import Geod
 import sys
-from helper_functions.plotting import read_gmt_file, read_and_filter_gmt
+from helper_functions.plotting import read_gmt_file, read_and_filter_gmt, plot_station_splitting
+import rasterio
+from rasterio.windows import from_bounds
+import matplotlib.colors as colors
 
 STATION_PHASE_MAP = {
     "ARMA": "sks_deep", 
     "AS31": "sks", 
     "BBOO": "sks_deep",
+    "BKB": "all",
+    "BKNI": "complex",
     "BLDU": "sks",
+    "CAN": "sks_deep",
+    "CMSA": "complex",
+    "CNB": "sks_deep",
     "COEN": "sks",
-    "CTAO": "sks",
+    "CTA": "complex",
+    "CTAO": "complex",
     "EIDS": "sks_deep",
+    "FAKI": "complex",
+    "FITZ": "sks_deep",
+    "FORT": "all",
+    "GIRL": "all",
+    "GUMO": "complex",
+    "HTT": "complex",
+    "INKA": "complex",
+    "JAGI": "complex",
+    "KDU": "complex",
+    "KMBL": "complex",
+    "KNRA": "complex",
+    "LCRK": "complex",
+    "LHI": "complex",
+    "LUWI": "complex",
+    "MANU": "complex",
+    "MEEK": "complex",
+    "MMRI": "sks_deep",
     "MNAI": "all",
+    "MOO": "complex",
+    "MORW": "complex",
     "MTN": "sks_deep",
-    "MULG": "all",
+    "MULG": "complex",
+    "MUN": "sks_deep",
+    "NFK": "complex",
     "NOUC": "sks_deep",
+    "NWAO": "complex",
+    "OOD": "complex",
+    "PMBI": "complex", #potentially a null station?
+    "PMG": "complex",
     "QIS": "sks",
+    "QLP": "complex",
+    "RABL": "complex",
+    "RIV": "complex", # another potential null
+    "SAUI": "all",
+    "SMRI": "complex",
     "SNZO": "all",
+    "SOEI": "complex",
     "STKA": "sks_deep",
+    "TNTI": "sks_deep",
     "TOO": "sks_deep",
+    "UGM": "complex",
+    "WB2": "complex",   # good null
+    "WRKA": "complex", # super good null
     "XMI": "all",
-    "XMIS": "all",}
+    "XMIS": "all",
+    "YNG": "sks_deep",
+    }
+
+
+#PacificSplittingMapCoordinates
+minlon, maxlon = 90.00, 180.00
+minlat, maxlat = -50.00, 10.00
 
 # nameoffilenewdata = '/work/gcl3/BR/nicolasv03/senior_thesis/measurements/splittingDB3.txt'
 # nameoffilenewdata = '/work/gcl3/BR/nicolasv03/senior_thesis/measurements/swp_KA_saved_SI_measurments_may15.txt'
-nameoffilenewdata = '/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/swp_measurements.txt'
+nameoffilenewdata = '/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/swp_measurements_2.txt'
 nameoffile = '/work/gcl3/BR/nicolasv03/senior_thesis/measurements/splittingDB.txt'
 
 df = pd.read_csv(nameoffile, sep='|', encoding='cp1252')
 dfnewdata = pd.read_csv(nameoffilenewdata, sep='\t', encoding='cp1252') #NEW DATA
 # dfnewdata = dfnewdata.loc[:, ~dfnewdata.columns.str.contains('^Unnamed')]
+
+blob_df = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/blob_plots/blob_coordinates.txt',
+                        delimiter=r'\s+',
+                        names=['latitude','longitude'],)
 
 # Bernhard Steinberger lithospheric thickness model
 lithos_df = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/lithosphere_thickness/lith_ave_no_slabs.d',
@@ -78,16 +133,11 @@ stat_avg_df = (
     .reset_index(drop=True)
 )
 
-stat_avg_df = stat_avg_df[stat_avg_df['station_clean'].isin(STATION_PHASE_MAP.keys())]
+# stat_avg_df = stat_avg_df[stat_avg_df['station_clean'].isin(STATION_PHASE_MAP.keys())]
+
+stat_avg_df = stat_avg_df[stat_avg_df['station_clean'].isin(dfnewdata['Station'])]
 
 
-# print(stat_avg_df.head(20))
-# sys.exit()
-
-
-# ridge_gmt = read_gmt_file('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/plate_boundaries/ridge.gmt')
-# transform_gmt = read_gmt_file('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/plate_boundaries/transform.gmt')
-# trench_gmt = read_gmt_file('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/plate_boundaries/trench.gmt')
 
 ridge_gmt = read_and_filter_gmt('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/plate_boundaries/ridge.gmt', 
                                 90, 190, -50, 50, max_gap=20)
@@ -98,18 +148,35 @@ transform_gmt = read_and_filter_gmt('/work/gcl3/BR/nicolasv03/senior_thesis/meas
 trench_gmt = read_and_filter_gmt('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/plate_boundaries/trench.gmt', 
                                 90, 190, -50, 50, max_gap=20)
 
+src = rasterio.open('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/bathymetry/gebco_2026_n6.807_s-50.49_w87.582_e193.256_geotiff.tif')
 
-# Add your own column names
-# lithos_df.columns = ['longitude', 'latitude', 'thickness']
-# print(lithos_df.head())
+window = from_bounds(
+    minlon, minlat,
+    maxlon, maxlat,
+    transform=src.transform
+)
+scale_factor = 8
+topo = src.read(1, window=window,
+                out_shape=(
+        int(window.height // scale_factor),
+        int(window.width // scale_factor)
+    ))
+topo = np.where(topo == src.nodata, np.nan, topo)
+# topo = np.where(topo < 0, 0, topo)
+# transform = src.window_transform(window)
 
-# print(stat_avg_df.head())
 
-# print(len(stat_avg_df))
+
+extent = [
+    minlon,
+    maxlon,
+    minlat,
+    maxlat
+]
+
+
 
 # sys.exit()
-# print(df)
-# print(df['Latitude'])
 
 #old data
 df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
@@ -123,9 +190,9 @@ dfnewdata['Longitude'] = pd.to_numeric(dfnewdata['Longitude'], errors='coerce')
 dfnewdata['phi'] = pd.to_numeric(dfnewdata['phi'], errors='coerce')
 dfnewdata['dt'] = pd.to_numeric(dfnewdata['dt'], errors='coerce')
 
-#PacificSplittingMapCoordinates
-minlon, maxlon = 90.00, 190.00
-minlat, maxlat = -50.00, 10.00
+# #PacificSplittingMapCoordinates
+# minlon, maxlon = 90.00, 190.00
+# minlat, maxlat = -50.00, 10.00
 
 # #australia coordinates
 # minlon, maxlon = 110.00, 160.00
@@ -140,41 +207,7 @@ import re
 
 # plate motion data 
 platedf = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/pm10242.csv',sep=',',header=None,names=['station','lat', 'lon', 'rate','angle','a','b','c'])
-# platedf = platedf[platedf['c']=='AU(NNR)']# platedf = platedf.dropna()
-# print(platedf.head())
 
-# def dms_to_dd(dms_str):
-#     """
-#     Convert a DMS string like '88 1\' 3.57" S' to decimal degrees.
-#     """
-#     match = re.match(r"(\d+)[°\s]+(\d+)[\'\s]+([\d.]+)\"?\s*([NSEW])", dms_str.strip())
-#     if not match:
-#         return None  # Could not parse
-#     deg, minute, second, direction = match.groups()
-#     dd = float(deg) + float(minute) / 60 + float(second) / 3600
-#     if direction in ['S', 'W']:
-#         dd *= -1
-#     return dd
-
-# def dms_to_dd(dms_str):
-#     dms_str = dms_str.strip().replace('′', "'").replace('″', '"')  # normalize quotes
-#     # Try to match DMS
-#     match = re.match(r"(\d+)[^\d]+(\d+)[^\d]+([\d.]+)[^\d]*([NSEW])", dms_str)
-#     if match:
-#         deg, minute, second, direction = match.groups()
-#         dd = float(deg) + float(minute) / 60 + float(second) / 3600
-#     else:
-#         # Try to match just degree and direction (e.g., "90 S")
-#         match_simple = re.match(r"(\d+)\s*([NSEW])", dms_str)
-#         if match_simple:
-#             dd = float(match_simple.group(1))
-#             direction = match_simple.group(2)
-#         else:
-#             return None  # Failed to parse
-
-#     if direction in ['S', 'W']:
-#         dd *= -1
-#     return dd
 
 def dms_to_dd(dms_str):
     # Remove extraneous quotes and whitespace
@@ -202,12 +235,7 @@ def dms_to_dd(dms_str):
 platedf['lat_dd'] = platedf['lat'].apply(dms_to_dd)
 platedf['lon_dd'] = platedf['lon'].apply(dms_to_dd)
 
-# print(platedf.head())
 
-# sys.exit()
-
-# Drop any row that didn't parse correctly
-# platedf = platedf.dropna(subset=['lat_dd', 'lon_dd'])
 
 # Compute u (east) and v (north) components
 import numpy as np
@@ -257,32 +285,8 @@ print(len(stat_avg_df))
 print(stat_avg_df)
 
 
-# sys.exit()
-
-
-# sys.exit()
-# print(sks_meas_all.head())
-# print(sks_meas_all_newdata.head())
-
-# print(len(df))
-# print(len(sks_meas_all_newdata))
-
-# legend_df = pd.DataFrame(columns)
-# print(sks_meas_all_newdata.head(4))
-
-# ### add dummy measurement for legend
-# sks_meas_all_newdata.loc[len(sks_meas_all_newdata)] = {
-#     'index':len(sks_meas_all_newdata),
-#     # 'index':len(sks_meas_all_newdata),
-#     'Station': 'TEST',
-#     'Latitude': -25,
-#     'Longitude': 135,
-#     'phi': 90,
-#     'dt': 1
-# }
-
 legend_df = pd.DataFrame([{
-    'Station': r'$\delta t$ = 1.0',
+    'Station': r'$\mathbf{\delta t}$ = 1.0',
     'Latitude': -40,
     'Longitude': 105,
     'phi': 90,
@@ -314,16 +318,43 @@ ax.set_extent([95,180,-50,5], crs=ccrs.PlateCarree())
 # fig = plt.figure(figsize=(20, 10))
 # ax = plt.axes(projection=ccrs.PlateCarree())
 # ax.set_extent([minlon, maxlon, minlat, maxlat], crs=ccrs.PlateCarree())
+vmin = -4000   # ocean
+vmax = 2000    # land
+
+
+img = ax.imshow(
+    topo,
+    extent=extent,
+    origin="upper",
+    transform=ccrs.PlateCarree(),
+    cmap="terrain",
+    vmin=vmin,
+    vmax=vmax,
+    alpha=0.6
+)
+
+
+# ax.coastlines()
+# ax.set_global()
+
+cbar = plt.colorbar(img, ax=ax, shrink=0.6)
+cbar.set_label("Bathymetry [m]")
+
+
 
 
 # minlon, maxlon = 90.00, 190.00
 # minlat, maxlat
 # ax.set_global()
-ax.stock_img()
-ax.coastlines()
+# ax.stock_img()
+# ax.coastlines()
 # ax.add_feature(cfeature.BORDERS, linestyle=':')
 # ax.add_feature(cfeature.LAND, edgecolor='black')
 
+ax.gridlines(
+    draw_labels=True,
+    linewidth=0
+)
 # ax.add_feature(cfeature.NaturalEarthFeature(
 #     'raster',
 #     'shaded_relief',
@@ -362,6 +393,18 @@ for segment in transform_gmt:
         ax.plot(lons, lats,
                 color='darkred', linewidth=1.5,
                 transform=ccrs.PlateCarree(), zorder=1)
+        
+
+for i in range(0,len(blob_df)):
+    blob = blob_df.iloc[i]
+    ax.scatter(
+    blob_df['longitude'],
+    blob_df['latitude'],
+    color='black',
+    s=10,
+    transform=ccrs.PlateCarree(),
+    zorder=10
+)
 
 # # Prepare data for contour plot
 # # Convert to 2D grid if needed
@@ -396,38 +439,41 @@ for segment in transform_gmt:
 
 
 
-def plot_station_splitting(statname,statlat,statlon,phi,dt,version=None,annotate=True):
-    # ax.plot(statlon,statlat, 'y', marker = 'v',markersize=6, transform=ccrs.PlateCarree())
-    phi = np.radians(90 - phi)
-    half_dt = dt / 2 
+# def plot_station_splitting(statname,statlat,statlon,phi,dt,version=None,annotate=True):
+#     # ax.plot(statlon,statlat, 'y', marker = 'v',markersize=6, transform=ccrs.PlateCarree())
+#     phi = np.radians(90 - phi)
+#     half_dt = dt / 2 
 
-    #halfway points of each line
-    dx = half_dt * np.cos(phi)
-    dy = half_dt * np.sin(phi)
+#     #halfway points of each line
+#     dx = half_dt * np.cos(phi)
+#     dy = half_dt * np.sin(phi)
 
-    x0 = statlon - dx
-    x1 = statlon + dx
-    y0 = statlat - dy
-    y1 = statlat + dy
+#     x0 = statlon - dx
+#     x1 = statlon + dx
+#     y0 = statlat - dy
+#     y1 = statlat + dy
 
-    if version is 'New':
-        ax.plot([x0, x1], [y0, y1], color='blue', linewidth=3, transform=ccrs.PlateCarree(),zorder=10)
-    if version is 'Legend':
-        ax.plot([x0, x1], [y0, y1], color='black', linewidth=3, transform=ccrs.PlateCarree())
+#     if version is 'New':
+#         ax.plot([x0, x1], [y0, y1], color='black', linewidth=3, transform=ccrs.PlateCarree(),zorder=10)
+#     if version is 'Legend':
+#         ax.plot([x0, x1], [y0, y1], color='black', linewidth=3, transform=ccrs.PlateCarree())
+#     if version is 'Old':
+#             ax.plot([x0, x1], [y0, y1], color="#FF4400", linewidth=3, transform=ccrs.PlateCarree())
 
-    else:
-        ax.plot([x0, x1], [y0, y1], color='black', linewidth=0.5, transform=ccrs.PlateCarree(),alpha=0.7)
+#     # else:
+#     #     ax.plot([x0, x1], [y0, y1], color='orange', linewidth=0.5, transform=ccrs.PlateCarree(),alpha=0.7)
 
-    if annotate:
-        ax.annotate(
-        statname,
-        xy=(statlon,statlat),
-        xytext=(10, 10),
-        textcoords='offset points',
-        fontsize=16,
-        color='blue',
-        zorder=8
-        )
+#     if annotate:
+#         ax.annotate(
+#         statname,
+#         xy=(statlon,statlat),
+#         xytext=(10, 10),
+#         textcoords='offset points',
+#         fontsize=16,
+#         fontweight='bold',
+#         color='black',
+#         zorder=8
+#         )
 
 # def plot_plate_motion(statlat,statlon,phi,dt,version=False):
 #     # ax.plot(statlon,statlat, 'y', marker = 'v',markersize=6, transform=ccrs.PlateCarree())
@@ -541,7 +587,7 @@ for i in range(len(stat_avg_df)):
                            stat_avg_df['lon'].iloc[i],
                            stat_avg_df['azi'].iloc[i],
                            4*stat_avg_df['dt'].iloc[i],
-                           version='Legend',
+                           version='Old',
                            annotate=False)
     
 
@@ -576,4 +622,4 @@ norm = Normalize(vmin=0, vmax=1.5)
 # cbar.set_label('Delay Time (s)', fontsize=14)
 
 # plt.title("Indonesia Splitting Results",fontsize=25)
-fig.savefig('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/test_map_boundaries.png', dpi=720) #original dpi=300
+fig.savefig('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/publication_map/test_map_boundaries_my_data@@@@.png', dpi=720) #original dpi=300

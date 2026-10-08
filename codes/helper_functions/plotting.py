@@ -11,6 +11,9 @@ import cartopy.feature as cfeature
 from support import plot_great_circle_ray_path
 from pyproj import Geod
 from .analysis import si_function_simple,si_function_tilt
+import matplotlib.path as mpath
+import matplotlib.colors as mcolors
+
 
 
 def plot_si_measurements(result, 
@@ -2079,15 +2082,26 @@ def plot_station_stereographic_map(results, station_code, phases_allowed, s_dept
     
     fig = plt.figure(figsize=figsize)
     ax = plt.axes(projection=proj)
-    
+
+    # Make circular boundary
+    theta = np.linspace(0, 2*np.pi, 100)
+    center = [0.5, 0.5]
+    radius = 0.5
+
+    verts = np.vstack([np.sin(theta), np.cos(theta)]).T
+    circle = mpath.Path(verts * radius + center)
+
+    # ax.set_boundary(circle, transform=ax.transAxes)
+    ax.set_global()
+        
     # ===== Map styling =====
     # ax.stock_img()
     ax.coastlines()
     
     # Limit view
-    ax.set_extent([stat_lon - 160, stat_lon + 160,
-                   stat_lat - 90, stat_lat + 90],
-                  crs=ccrs.PlateCarree())
+    # ax.set_extent([stat_lon - 160, stat_lon + 160,
+    #                stat_lat - 90, stat_lat + 90],
+    #               crs=ccrs.PlateCarree())
     
     # ===== Cyclic colormap for azimuth =====
     cmap = plt.cm.twilight  # Cyclic colormap (wraps at 360°)
@@ -2119,7 +2133,9 @@ def plot_station_stereographic_map(results, station_code, phases_allowed, s_dept
             if row['evdp'] >= s_depth:
                 label = 'Deep S' if not s_deep_plotted else None
                 s_deep_plotted = True
-                color = 'tab:blue'
+                # color = 'tab:blue'
+                color = 'tab:green'
+
                 n_deep += 1
             else:
                 label = 'Shallow S' if not s_shallow_plotted else None
@@ -2184,7 +2200,7 @@ def plot_station_stereographic_map(results, station_code, phases_allowed, s_dept
         
         # Plot great circle path
         ax.plot(lons, lats, 
-               'k--', linewidth=0.75, alpha=0.6,
+               'k--', linewidth=1.5, alpha=0.6,
                transform=ccrs.Geodetic(),zorder=4)
         
         # Update last plotted azimuth
@@ -2300,6 +2316,7 @@ def read_and_filter_gmt(filename, minlon, maxlon, minlat, maxlat, max_gap=20):
             
             try:
                 lon, lat = map(float, line.split()[:2])
+                lon = lon % 360
                 
                 # Check if point is in map bounds
                 if not (minlon <= lon <= maxlon and minlat <= lat <= maxlat):
@@ -2325,3 +2342,410 @@ def read_and_filter_gmt(filename, minlon, maxlon, minlat, maxlat, max_gap=20):
             segments.append(current_segment)
     
     return segments
+
+# def plot_station_splitting(
+#     statname,
+#     statlat,
+#     statlon,
+#     phi,
+#     dt,
+#     ax,
+#     version=None,
+#     annotate=True,
+#     plotted_points=None
+# ):
+#     """
+#     Plot shear-wave splitting bar and optional station annotation.
+#     Automatically offsets nearby labels to reduce overlap.
+#     """
+
+#     import numpy as np
+#     import cartopy.crs as ccrs
+
+#     # initialize tracking list if needed
+#     if plotted_points is None:
+#         plotted_points = []
+
+#     # ----------------------------------------
+#     # splitting line geometry
+#     # ----------------------------------------
+
+#     phi_rad = np.radians(90 - phi)
+
+#     half_dt = dt / 2
+
+#     dx = half_dt * np.cos(phi_rad)
+#     dy = half_dt * np.sin(phi_rad)
+
+#     x0 = statlon - dx
+#     x1 = statlon + dx
+
+#     y0 = statlat - dy
+#     y1 = statlat + dy
+
+#     # ----------------------------------------
+#     # plot splitting line
+#     # ----------------------------------------
+
+#     if version == 'New':
+
+#         ax.plot(
+#             [x0, x1],
+#             [y0, y1],
+#             color='black',
+#             linewidth=3,
+#             transform=ccrs.PlateCarree(),
+#             zorder=10
+#         )
+
+#     elif version == 'Legend':
+
+#         ax.plot(
+#             [x0, x1],
+#             [y0, y1],
+#             color='black',
+#             linewidth=3,
+#             transform=ccrs.PlateCarree(),
+#             zorder=10
+#         )
+
+#     elif version == 'Old':
+
+#         ax.plot(
+#             [x0, x1],
+#             [y0, y1],
+#             color="#FF4400",
+#             linewidth=3,
+#             transform=ccrs.PlateCarree(),
+#             zorder=9
+#         )
+
+#     # ----------------------------------------
+#     # label offset logic
+#     # ----------------------------------------
+
+#     label_dx = 10
+#     label_dy = 10
+
+#     nearby_count = 0
+
+#     for other_lon, other_lat in plotted_points:
+
+#         # check for nearby stations
+#         if (
+#             abs(statlon - other_lon) < 2
+#             and
+#             abs(statlat - other_lat) < 2
+#         ):
+
+#             nearby_count += 1
+
+#     # progressively move labels farther away
+#     offset_patterns = [
+#         (10, 10),
+#         (-10, 10),
+#         (10, -10),
+#         (-10, -10),
+#         (15, 0),
+#         (-15, 0),
+#         (0, 15),
+#         (0, -15),
+#     ]
+
+#     label_dx, label_dy = offset_patterns[
+#         nearby_count % len(offset_patterns)
+#     ]
+
+#     # store current point AFTER overlap check
+#     plotted_points.append((statlon, statlat))
+
+#     # ----------------------------------------
+#     # annotate station
+#     # ----------------------------------------
+
+#     if annotate:
+
+#         ax.annotate(
+#             statname,
+
+#             xy=(statlon, statlat),
+
+#             xytext=(label_dx, label_dy),
+
+#             xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+
+#             textcoords='offset points',
+
+#             fontsize=16,
+#             fontweight='bold',
+
+#             color='black',
+
+#             bbox=dict(
+#                 facecolor='white',
+#                 alpha=0.7,
+#                 edgecolor='none',
+#                 pad=1
+#             ),
+
+#             zorder=8
+#         )
+
+def plot_station_splitting(statname,statlat,statlon,phi,dt,ax,version=None,annotate=True):
+    phi = np.radians(90 - phi)
+    half_dt = dt / 2 
+
+    #halfway points of each line
+    dx = half_dt * np.cos(phi)
+    dy = half_dt * np.sin(phi)
+
+    x0 = statlon - dx
+    x1 = statlon + dx
+    y0 = statlat - dy
+    y1 = statlat + dy
+
+    if version == 'New':
+        ax.plot([x0, x1], [y0, y1], color='black', linewidth=3, transform=ccrs.PlateCarree(),zorder=10)
+    if version == 'New_lowalpha':
+            ax.plot([x0, x1], [y0, y1], color='black', alpha=0.8,linewidth=3, transform=ccrs.PlateCarree(),zorder=10)
+    if version == 'Legend':
+        ax.plot([x0, x1], [y0, y1], color="black", linewidth=3, transform=ccrs.PlateCarree())
+    if version == 'SurfaceLegend':
+        ax.plot([x0, x1], [y0, y1], color='black', linewidth=3, transform=ccrs.PlateCarree())
+    
+    if version == 'Prediction1':
+        ax.plot([x0, x1], [y0, y1], color='red',alpha=0.5, linewidth=3, transform=ccrs.PlateCarree(),zorder=10)
+
+    if version == 'Prediction2':
+        ax.plot([x0, x1], [y0, y1], color='blue',alpha=0.5, linewidth=3, transform=ccrs.PlateCarree(),zorder=10)
+
+    if version == 'CMB_single_station':
+        ax.plot(statlon,
+                statlat,
+                marker='v',
+                markersize=12,
+                markerfacecolor='yellow',
+                markeredgecolor='black',
+                markeredgewidth=1.5,
+                linestyle='None',
+                transform=ccrs.PlateCarree(),
+                zorder=10)
+
+    
+    if version == 'Old':
+            ax.plot([x0, x1], [y0, y1], color="tomato", linewidth=2, transform=ccrs.PlateCarree())
+    if version == 'BoldNew':
+            ax.plot([x0, x1], [y0, y1], color="#FF4400", linewidth=5, transform=ccrs.PlateCarree(),zorder=10)
+    if version == 'Surface':
+        if (dt < 100) & (dt > 20):
+            color = 'green'
+        else:
+            color= 'black'
+        ax.plot([x0, x1], [y0, y1], color=color, linewidth=3, transform=ccrs.PlateCarree(),zorder=10,alpha=0.7)
+        
+    dx,dy = 10,10
+    ha = 'left'
+    va = 'bottom'
+
+    if statname == "CAN":
+        dx,dy = 10,-20
+
+    if statname == "CNB":
+        dx,dy = 10,0
+
+    if statname == "STKA":
+        dx,dy = 0,20
+
+    if statname == "TOO":
+        # dx,dy = -10,-10 #OLD VALUES BEFORE SHIFTING FOR FIG 4
+        # ha = 'right'
+        # va = 'top'
+        dx,dy = 40,-10
+        ha = 'right'
+        va = 'top'
+
+    if statname == "MUN":
+        dx,dy = -10,-10
+        ha = 'right'
+        va = 'top'
+
+    if statname == "AS31":
+        dx,dy = -10,-10
+        ha = 'right'
+        va = 'top'
+
+    if statname == "FORT":
+        dx,dy = -10,-10
+        ha = 'right'
+        va = 'top'
+    
+    if statname == "BBOO":
+        dx,dy = -10,-10
+        ha = 'right'
+        va = 'top'
+
+    if statname == "YNG":
+        dx,dy = -8,10
+        ha = 'right'
+        va = 'top'
+
+    if statname == "SNZO":
+        dx,dy = -10,-45
+        ha = 'left'
+        va = 'bottom'
+
+    if annotate:
+        ax.annotate(
+        statname,
+        xy=(statlon,statlat),
+        xytext=(dx,dy),
+        xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+        textcoords='offset points',
+        fontsize=16,
+        fontweight='bold',
+        color='black',
+        ha=ha,
+        va=va,
+        zorder=20,
+        bbox=dict(boxstyle='round,pad=0.1',  # or 'square,pad=0.3'
+                  facecolor='white',
+                  edgecolor='none',  # or 'black' for border
+                  alpha=0.8)  # slight transparency
+        )
+
+
+def plot_station_metadata(statname,stat_phase_used,statlat,statlon,phi,dt,ax,version=None,annotate=True):
+    # phi = np.radians(90 - phi)
+    # half_dt = dt / 2 
+
+    # #halfway points of each line
+    # dx = half_dt * np.cos(phi)
+    # dy = half_dt * np.sin(phi)
+
+    # x0 = statlon - dx
+    # x1 = statlon + dx
+    # y0 = statlat - dy
+    # y1 = statlat + dy
+
+    # if version is 'New':
+    #     ax.plot([x0, x1], [y0, y1], color='black', linewidth=3, transform=ccrs.PlateCarree(),zorder=10)
+    # if version is 'Legend':
+    #     ax.plot([x0, x1], [y0, y1], color='black', linewidth=3, transform=ccrs.PlateCarree())
+    # if version is 'Old':
+    #         ax.plot([x0, x1], [y0, y1], color="#FF4400", linewidth=3, transform=ccrs.PlateCarree())
+# ax.scatter(
+#     blob_df['longitude'],
+#     blob_df['latitude'],
+#     color='black',
+#     s=10,
+#     transform=ccrs.PlateCarree(),
+#     zorder=10
+# )
+    if stat_phase_used == 'sks':
+        ax.scatter(
+            statlon,
+            statlat,
+            color = 'blue',
+            s = 10, 
+            transform=ccrs.PlateCarree(),
+            zorder=8
+        )
+
+    if stat_phase_used == 'sks_deep':
+        ax.scatter(
+            statlon,
+            statlat,
+            color = 'orange',
+            s = 10, 
+            transform=ccrs.PlateCarree(),
+            zorder=8
+        )
+
+    if stat_phase_used == 'all':
+        ax.scatter(
+            statlon,
+            statlat,
+            color = 'yellow',
+            s = 10, 
+            transform=ccrs.PlateCarree(),
+            zorder=8
+        )
+
+    if stat_phase_used == 'complex':
+        ax.scatter(
+            statlon,
+            statlat,
+            color = 'grey',
+            s = 10, 
+            transform=ccrs.PlateCarree(),
+            zorder=8
+        )
+
+    if annotate:
+        ax.annotate(
+        statname,
+        xy=(statlon,statlat),
+        xytext=(10, 10),
+        xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+        textcoords='offset points',
+        fontsize=16,
+        fontweight='bold',
+        color='black',
+        zorder=8
+        )
+
+
+def build_cmap():
+    COLOR_OCEAN = "white"
+    COLOR_LAND  = "#f3f3f3"
+    COLOR_COAST = "#a8a8a8"
+    COLOR_LLVP  = "#d95757"
+    THRESHOLD   = 0.4
+    DATA_MAX    = 2.0
+    GRAY_FLAT   = "#aaaaaa"
+    warm_colors = [
+        "#fffde0",
+        "#fdd87a",
+        "#f4931b",
+        "#d94308",
+        "#8b0000",
+    ]
+    warm_cmap = mcolors.LinearSegmentedColormap.from_list("warm", warm_colors, N=256)
+
+    n_total = 512
+    frac_gray = THRESHOLD / DATA_MAX
+    n_gray = max(4, int(n_total * frac_gray))
+    n_warm = n_total - n_gray
+
+    gray_rgb = mcolors.to_rgba(GRAY_FLAT)
+    gray_block = np.tile(gray_rgb, (n_gray, 1))
+    warm_block = warm_cmap(np.linspace(0, 1, n_warm))
+
+    combined = np.vstack([gray_block, warm_block])
+    cmap = mcolors.ListedColormap(combined, name="aniso_warm")
+    cmap.set_bad(color="white")
+    cmap.set_under(color=GRAY_FLAT)
+
+    norm = mcolors.Normalize(vmin=0.0, vmax=DATA_MAX)
+    return cmap, norm
+
+def subsample_anisotropy_grid(df, lat_stride=2, lon_stride=2):
+    """
+    Subsample by taking every Nth latitude and longitude
+    This maintains a regular grid pattern
+    """
+    # Get unique sorted coordinates
+    unique_lats = np.sort(df['lat'].unique())
+    unique_lons = np.sort(df['lon'].unique())
+    
+    # Subsample coordinates
+    selected_lats = unique_lats[::lat_stride]
+    selected_lons = unique_lons[::lon_stride]
+    
+    print(f"Original grid: {len(unique_lats)} lats × {len(unique_lons)} lons")
+    print(f"Subsampled grid: {len(selected_lats)} lats × {len(selected_lons)} lons")
+    
+    # Filter DataFrame to keep only selected coordinates
+    df_sub = df[df['lat'].isin(selected_lats) & df['lon'].isin(selected_lons)].copy()
+    
+    return df_sub.reset_index(drop=True)

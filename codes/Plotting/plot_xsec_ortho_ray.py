@@ -216,6 +216,10 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
     p1 = p1_extended
     p2 = p2_extended
 
+    # # alternate for a small receiver side mantle slice:
+    # p1 = p1_extended
+    # p2 = shoot(p1,100,az_p1_to_p2)
+
     print(f"Extended p1: {p1}")
     print(f"Extended p2: {p2}")
 
@@ -389,9 +393,15 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
         # location (for map)
         waypoint_locs.append(shoot(p1, d, az))
         # to cartesian
+        section_angle = d - delta / 2
+
         rw = np.asarray((r_earth - dmin,))
-        yw = np.cos(np.radians(- delta / 2 + d)) * rw
-        xw = np.sin(np.radians(- delta / 2 + d)) * rw
+        xw = np.sin(np.radians(section_angle)) * rw
+        yw = np.cos(np.radians(section_angle)) * rw
+
+        # rw = np.asarray((r_earth - dmin,))
+        # yw = np.cos(np.radians(- delta / 2 + d)) * rw
+        # xw = np.sin(np.radians(- delta / 2 + d)) * rw
         # fill color
         facecolor = 'w'
         if i == num_waypoints - 1:
@@ -412,21 +422,58 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
         x2 = x1 - tick_km_height * np.cos(np.radians(td))
         plt.plot((x1,x2), (y1,y2), 'k-', lw=tick_width)
 
-    # MARK STATION LOCATION ON CROSS-SECTION
-    # Station is at p1_orig, which is overshoot_p1 from the left edge
-    station_dist_from_left = overshoot_p1  # degrees from p1_extended
-    station_angle = -delta/2 + station_dist_from_left  # Angle in cross-section coords
+    # # MARK STATION LOCATION ON CROSS-SECTION
+    # # Station is at p1_orig, which is overshoot_p1 from the left edge
+    # station_dist_from_left = overshoot_p1  # degrees from p1_extended
+    # station_angle = -delta/2 + station_dist_from_left  # Angle in cross-section coords
     
-    # Plot at surface
-    rs = r_earth - dmin
-    ys = np.cos(np.radians(station_angle)) * rs
-    xs = np.sin(np.radians(station_angle)) * rs
+    # # Plot at surface
+    # rs = r_earth - dmin
+    # ys = np.cos(np.radians(station_angle)) * rs
+    # xs = np.sin(np.radians(station_angle)) * rs
 
-    rotation_angle = delta/2 - station_dist_from_left + 180  # 180 for upside-down
+    # rotation_angle = delta/2 - station_dist_from_left + 180  # 180 for upside-down
 
-    plt.plot(xs, ys, marker=(3, 0, rotation_angle), markersize=15, 
-            markerfacecolor='red', markeredgecolor='black', 
-            markeredgewidth=2, ls='', zorder=1002)
+    # plt.plot(xs, ys, marker=(3, 0, rotation_angle), markersize=15, 
+    #         markerfacecolor='red', markeredgecolor='black', 
+    #         markeredgewidth=2, ls='', zorder=1002)
+
+    # ============================================================
+    # MARK STATION LOCATION ON CROSS-SECTION
+    # ============================================================
+
+    # p1 is overshoot_p1 degrees before the actual station.
+    # Therefore the station is overshoot_p1 degrees from the
+    # left-hand edge of the cross-section.
+
+    # station_dist_from_left = overshoot_p1
+
+    # # Cross-section coordinates run from:
+    # #   -delta/2  -> left edge
+    # #   +delta/2  -> right edge
+    # #
+    # # Therefore the station's angular position is:
+    # station_angle = -delta / 2 + station_dist_from_left
+
+    # # Surface radius
+    # rs = r_earth - dmin
+
+    # # Convert cross-section polar coordinate to Cartesian
+    # ys = np.cos(np.radians(station_angle)) * rs
+    # xs = np.sin(np.radians(station_angle)) * rs
+
+    # Plot receiver
+    # plt.plot(
+    #     xs,
+    #     ys,
+    #     marker='v',
+    #     markersize=15,
+    #     markerfacecolor='red',
+    #     markeredgecolor='black',
+    #     markeredgewidth=2,
+    #     linestyle='None',
+    #     zorder=1002
+    # )
     
     # plt.plot(xs, ys, marker='v', markersize=15, markerfacecolor='red',
     #         markeredgecolor='black', markeredgewidth=2, ls='', zorder=1002)
@@ -440,8 +487,9 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
     # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/ARMA_evbaz_120_to_150_events.txt',sep=',')
 
     # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/BBOO_evbaz_140_to_165_events.txt',sep=',')
-    eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/EIDS_evbaz_135_to_150_events.txt',sep=',')
-
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/codes/Plotting/EIDS_evbaz_135_to_150_events.txt',sep=',')
+    # eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/blob_plots/blob_coordinates.txt',sep='\t')
+    eqdata = pd.read_csv('/work/gcl3/BR/nicolasv03/senior_thesis/measurements/blob_plots/blob_coordinates_ARMA_only.txt',sep='\t')
 
 
 
@@ -479,30 +527,36 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
                             eqdist, phase_list=[eqphase])
             arrivals = []
             for arrival in arrivals_tmp:
-                # dist = arrival.purist_distance % 360.0
-                # distance = arrival.distance
-                # if distance < 0:
-                #     distance = (distance % 360)
-                # if abs(dist - distance) > 1E-5 * dist:
-                #      # Mirror on axis.
-                #     arrival = copy.deepcopy(arrival)
-                #     arrival.path["dist"] *= -1.0
-                # arrivals.append(arrival)
 
-                # print(eqdepth,eqdist)
-                # print(arrival.path["depth"][0])
-                # print(np.rad2deg(arrival.path["dist"][0]))
+                stlat = float(eqdata['statlat'].iloc[i])
+                stlon = float(eqdata['statlon'].iloc[i])
+                station = (stlat, stlon)
 
-                # eqdist-delta
+                # Distance from profile origin to station
+                station_dist, _ = delaz(p1, station)
 
+                path_dist = np.rad2deg(arrival.path["dist"])
 
-                xr = np.sin(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat-overshoot_p1)) * (r_earth - arrival.path["depth"])
-                yr = np.cos(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat-overshoot_p1)) * (r_earth - arrival.path["depth"])
+                theta = np.deg2rad(path_dist - eqdist + station_dist)
+                radius = r_earth - arrival.path["depth"]
+               
+
+                
+
+                xr = np.sin(theta) * radius
+                yr = np.cos(theta) * radius
+
+                # xr = np.sin(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat-overshoot_p1)) * (r_earth - arrival.path["depth"])
+                # yr = np.cos(np.deg2rad(np.rad2deg(arrival.path["dist"])- delta / 2 - (eqdist-delta)+deltastat-overshoot_p1)) * (r_earth - arrival.path["depth"])
             
                 xr = -xr
 
-                plt.plot(xr[0],yr[0],'o',c='gold',marker='*',markersize=10,markeredgecolor='black',# Outline color
-    markeredgewidth=1)
+                plt.plot(xr[0],yr[0],
+                         'o',c='gold',
+                         marker='*',
+                         markersize=10,
+                         markeredgecolor='black',# Outline color
+                        markeredgewidth=1)
 
                 # if float(abs(eqdata['deltaphi'].iloc[i])) > 60:
                 #     plt.plot(xr,yr, 'black',lw=1,linestyle='dotted',alpha=0.5)
@@ -720,7 +774,7 @@ def plot_xsec(p1, p2, model_config, xsec_name, fig_id_text, basemap_args,
         # plt.savefig('%s/xsec_dln%s_%s.%s.vmax_%.1f.%s' % (
         #     save_path, param_name, xsec_name, model_config['name'],
         #     vmax, save_ext), **save_kwargs)
-        plt.savefig(save_path+'/EIDS_chile_SKS_and_S_raypaths_20260505.png',dpi=1200)
+        plt.savefig(save_path+'/ARMA_chile_sks_xsec.png',dpi=1200)
 
     return fig
 
@@ -762,16 +816,19 @@ def define_and_plot_xsecs():
 #     p1 = 115.0, 10.0 #phillipine subdcution 
     # p2 = 125.64, -18.1 #FITZ station 
 
-    # p1 = 151.63 , -30.412 #ARMA station
+    p1 = 151.63 , -30.412 #ARMA station
     # # p1 = -176.0, -25.0 #tonga subduction 
-    # p2 = -71.71 , -32.75 #mean values of sources for chile subduction strange SKS deep mantle contamination
+    p2 = -71.71 , -32.75 #mean values of sources for chile subduction strange SKS deep mantle contamination
     # # p2 = -179 , -20.0 #tonga trench
 
     # p1 = 136.06 , -32.81 #BBOO station
     # p2 = -70.6 , -32.98 #mean values of sources for chile subduction strange SKS deep mantle contamination for BBOO
 
-    p1 = 151.09 , -25.37 #EIDS station
-    p2 = -70.86 , -32.6 #mean values of sources for chile subduction strange SKS deep mantle contamination for EIDS
+    # p1 = 151.09 , -25.37 #EIDS station
+    # p2 = -70.86 , -32.6 #mean values of sources for chile subduction strange SKS deep mantle contamination for EIDS
+
+    # p1 = 149.8 , -33.2 # mean values of stations affected by it 
+    # p2 = -71.5 , -31.8 # mean values of events that are within the blob cluster of stations in blob_plots
 
     mid_lon, mid_lat = shoot(p1, delaz(p1, p2)[0]/2, delaz(p1, p2)[1])
     basemap_args = {'projection': 'ortho', 'lon_0': mid_lon, 'lat_0': mid_lat+15, 'resolution': 'c'}

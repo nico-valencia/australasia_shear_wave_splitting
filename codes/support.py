@@ -26,8 +26,9 @@ from scipy.fftpack import fft
 from obspy.taup import TauPyModel
 model = TauPyModel(model="iasp91")
 
-from pyproj import Geod  # ← ADD THIS LINE
-import cartopy.crs as ccrs
+# from pyproj import Geod  # ← ADD THIS LINE
+# import cartopy.crs as ccrs
+import re
 
 
 
@@ -787,7 +788,7 @@ def SplittingIntensity(pair,baz):
 
     m1est = SplitIntensity 
 
-    S_expec = -0.5 * SplitIntensity * rd 
+    # S_expec = -0.5 * SplitIntensity * rd 
 
     # root mean square error 
     rdelta = np.sum((T + 0.5*SplitIntensity*rd)**2)
@@ -944,7 +945,27 @@ def plot_great_circle_ray_path(eq_lat, eq_lon, st_lat, st_lon, phase_type = None
 
     return ax
 
+def dms_to_dd(dms_str):
+    # Remove extraneous quotes and whitespace
+    dms_str = dms_str.strip().replace('"', '').replace('′', "'").replace('″', '"')
 
+    # Match DMS pattern like: 57 51' 26.19" S
+    match = re.match(r"(\d+)[^\d]+(\d+)[^\d]+([\d.]+)\s*([NSEW])", dms_str)
+    if match:
+        deg, minute, second, direction = match.groups()
+        dd = float(deg) + float(minute) / 60 + float(second) / 3600
+    else:
+        # Try to match simpler patterns like "57 S"
+        match_simple = re.match(r"(\d+)\s*([NSEW])", dms_str)
+        if match_simple:
+            dd = float(match_simple.group(1))
+            direction = match_simple.group(2)
+        else:
+            return None  # Unable to parse
+
+    if direction in ['S', 'W']:
+        dd *= -1
+    return dd
 
 
 

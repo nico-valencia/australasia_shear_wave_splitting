@@ -9,6 +9,14 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import math
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import traceback
+
+import matplotlib as mpl
+mpl.rcParams.update({
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+    "text.usetex": False,
+})
 
 
 def weighted_mean_and_std(values, errors):
@@ -426,6 +434,36 @@ def si_function_simple(baz, fast, lag):
     # return lag * 2 * np.sin(np.deg2rad(baz - fast)) * np.cos(np.deg2rad(baz - fast))
     return lag *  np.sin( 2* np.deg2rad(baz - fast))
 
+def si_function_double(baz, fast1, lag1, fast2, lag2):
+
+    return si_function_simple(baz, fast1, lag1) + si_function_simple(baz, fast2, lag2)
+
+
+def si_function_simple_with_C(baz, fast, lag, C):
+    """
+    Simple splitting intensity function (single horizontal layer). with constant shift
+    
+    SI(θ) = lag * 2 * sin(θ - φ) * cos(θ - φ) + C
+    
+    Parameters
+    ----------
+    baz : float or array
+        Back azimuth (degrees)
+    fast : float
+        Fast axis orientation (degrees)
+    lag : float
+        Delay time (s)
+    C: float
+        complexity constant
+        
+    Returns
+    -------
+    float or array
+        Splitting intensity
+    """
+    # return lag * 2 * np.sin(np.deg2rad(baz - fast)) * np.cos(np.deg2rad(baz - fast))
+    return lag *  np.sin( 2* np.deg2rad(baz - fast)) + C
+
 
 
 def si_function_tilt(baz_incident, fast, lag, tilt):
@@ -561,6 +599,136 @@ def fit_splitting_intensity(binned, incident_angle=25, use_tilt=False):
 
     return result
 
+def fit_splitting_intensity_with_C(binned, incident_angle=25, use_tilt=False):
+    """
+    Fit splitting intensity using LINEAR least squares.
+
+    Explicit linear least squares with C constant shift
+    Model: SI(φ) = A·sin(2φ) + B·cos(2φ) + C
+    
+    Where:
+    - A, B capture azimuthal variation (2φ pattern)
+    - C is constant shift from multi-layer interference
+    
+    Returns effective splitting parameters that account for
+    multi-layer complexity.
+    
+    Parameters
+    ----------
+    binned : pd.DataFrame
+        Output from bin_measurements() with columns: 
+        ['azimuth', 'mean', 'std', 'n', ...]
+    incident_angle : float
+        Incident angle (degrees) - NOT USED in linear approach but kept for compatibility
+    use_tilt : bool
+        If True, includes tilt term (NOT RECOMMENDED - set to False)
+        
+    Returns
+    -------
+    dict
+        Results dictionary with keys:
+        - 'phi': fast direction (degrees)
+        - 'dt': delay time (seconds)
+        - 'phi_err': uncertainty in phi
+        - 'dt_err': uncertainty in dt
+        - 'covariance': 2x2 covariance matrix
+        - 'correlation': 2x2 correlation matrix
+        - 'perr': array of uncertainties [phi_err, dt_err]
+        - 'A', 'B': linear coefficients
+
+    and some new stuff with C lol
+    """
+    
+    # Extract data
+    baz = np.radians(binned['azimuth'].values)
+    SI = binned['mean'].values
+    sigma = binned['std'].values
+    
+    # Build design matrix: SI = A*sin(2*baz) + B*cos(2*baz)
+    X = np.column_stack([
+        np.sin(2 * baz),   # Column for A
+        np.cos(2 * baz),   # Column for B
+        np.ones_like(baz)  # Column for C
+    ])
+    
+    # Weight matrix (inverse variance weighting)
+    W = np.diag(1 / sigma**2)
+    
+    # Weighted normal equations: (X^T W X) p = X^T W y
+    XtWX = X.T @ W @ X
+    XtWy = X.T @ W @ SI
+    
+    # Solve for linear parameters [A, B]
+    params = np.linalg.solve(XtWX, XtWy)
+    A, B, C = params
+    
+    # Convert to physical parameters
+    dt = np.sqrt(A**2 + B**2)
+    phi = 0.5 * np.degrees(np.arctan2(-B, A))
+    
+    # Ensure phi in [0, 180)
+    if phi < 0:
+        phi += 180
+    
+    # Covariance matrix of linear parameters (A, B)
+    pcov_ABC = np.linalg.inv(XtWX)
+    
+    # # Jacobian for transforming (A,B) uncertainties to (phi, dt)
+    # # J[i,j] = ∂(phi, dt)[i] / ∂(A, B)[j]
+    # denom = A**2 + B**2
+    # J = np.array([
+    #     [-B/(2*denom), A/(2*denom)],  # [∂phi/∂A, ∂phi/∂B]
+    #     [A/dt, B/dt]                   # [∂dt/∂A,  ∂dt/∂B]
+    # ])
+
+    # Jacobian for uncertainty propagation
+    # Uncertainty propagation
+    # dt and phi depend only on A, B (not C)
+    # C uncertainty comes directly from pcov_ABC
+    
+    # Jacobian: [d(phi)/dA, d(phi)/dB, d(phi)/dC]
+    #           [d(dt)/dA,  d(dt)/dB,  d(dt)/dC]
+    #           [d(C)/dA,   d(C)/dB,   d(C)/dC]
+    
+    # Jacobian with CORRECT degrees conversion
+    denom = A**2 + B**2
+    J = np.array([
+        # ∂phi/∂A, ∂phi/∂B  (include 0.5 × 180/π factor!)
+        [np.degrees(-B/(2*denom)), np.degrees(A/(2*denom)),0],
+        # ∂dt/∂A,  ∂dt/∂B
+        [A/dt, B/dt,0],
+        # d(C)/d[A,B,C]
+        [0, 0, 1]
+    ])
+
+    # Propagate covariance to physical parameters
+    pcov_physical = J @ pcov_ABC @ J.T
+    
+    # Extract uncertainties
+    perr = np.sqrt(np.diag(pcov_physical))
+    phi_err, dt_err, C_err = perr
+    
+    # Calculate correlation matrix
+    # corr = pcov_physical / np.outer(perr, perr)
+    
+    # Package results (same format as before for compatibility)
+    result = {
+        'phi': phi,
+        'dt': dt,
+        'C': C,
+        'phi_err': phi_err,
+        'dt_err': dt_err,
+        'C_err': C_err,
+        'covariance': pcov_physical,
+        # 'correlation': corr,
+        'perr': perr,
+        'A': A,  # Linear coefficients (bonus info)
+        'B': B,
+        'pcov_ABC': pcov_ABC  # Covariance in linear space (bonus)
+    }
+
+    return result
+
 # def fit_splitting_intensity(binned_results, 
 #                              incident_angle=25,
 #                              use_tilt=True,
@@ -646,7 +814,8 @@ def analyze_station(event_data,
                     s_depth=400,
                     weights=None,
                     incident_angle=25,
-                    use_tilt=True):
+                    use_tilt=True,
+                    with_C=False):
     """
     Complete analysis for a single station: filter, bin, fit.
     
@@ -679,7 +848,7 @@ def analyze_station(event_data,
     if len(station_events) == 0:
         return None
     
-
+    # print('attempt to bin measurements')
     # Bin measurements
     binned = bin_measurements(
         station_events,
@@ -689,17 +858,30 @@ def analyze_station(event_data,
         phase_weights=weights
     )
 
-    print('do we at least bin these')
     if len(binned) == 0:
+        print('analyze_station: binned measurements is 0')
         return None
     
-    # Fit splitting
-    fit_result = fit_splitting_intensity(
-        binned,
-        incident_angle=incident_angle,
-        use_tilt=use_tilt
-    )
+
+    if with_C is True:
+
+        # Fit splitting
+        fit_result = fit_splitting_intensity_with_C(
+            binned,
+            incident_angle=incident_angle,
+            use_tilt=use_tilt
+        )
+    else:
+        # print("attempt to fit result!")
+        # Fit splitting
+        fit_result = fit_splitting_intensity(
+            binned,
+            incident_angle=incident_angle,
+            use_tilt=use_tilt
+        )
     
+    # print('fit_result produced this:')
+    # print(f"phi {fit_result['phi']} and dt {fit_result['dt']}")
     # Package results
     result = {
         'station': station_code,
@@ -714,6 +896,9 @@ def analyze_station(event_data,
     
     if use_tilt:
         result['tilt'] = fit_result['tilt']
+    
+    if with_C is True:
+        result['C'] = fit_result['C']
     
     return result
 
@@ -981,6 +1166,76 @@ def fit_SI_linear_explicit(binned):
         'A': A, 'B': B
     }
 
+def fit_SI_linear_with_C(binned):
+    """
+    Explicit linear least squares with C constant shift
+    Model: SI(φ) = A·sin(2φ) + B·cos(2φ) + C
+    
+    Where:
+    - A, B capture azimuthal variation (2φ pattern)
+    - C is constant shift from multi-layer interference
+    
+    Returns effective splitting parameters that account for
+    multi-layer complexity.
+    """
+    # Extract data
+    baz = np.radians(binned['azimuth'].values)
+    SI = binned['mean'].values
+    sigma = binned['std'].values
+    
+    # Design matrix
+    X = np.column_stack([np.sin(2*baz), 
+                         np.cos(2*baz),
+                         np.ones_like(baz)])
+    
+    # Weight matrix
+    W = np.diag(1 / sigma**2)
+    
+    # Normal equations: (X^T W X) p = X^T W y
+    XtWX = X.T @ W @ X
+    XtWy = X.T @ W @ SI
+    
+    # Solve
+    p = np.linalg.solve(XtWX, XtWy)
+    A, B, C = p
+    
+    # Physical parameters
+    dt = np.sqrt(A**2 + B**2)
+    phi = 0.5 * np.degrees(np.arctan2(B, A))
+    if phi < 0:
+        phi += 180
+    
+    # Covariance
+    pcov_ABC = np.linalg.inv(XtWX)
+    
+    # Jacobian for uncertainty propagation
+    # Uncertainty propagation
+    # dt and phi depend only on A, B (not C)
+    # C uncertainty comes directly from pcov_ABC
+    
+    # Jacobian: [d(phi)/dA, d(phi)/dB, d(phi)/dC]
+    #           [d(dt)/dA,  d(dt)/dB,  d(dt)/dC]
+    #           [d(C)/dA,   d(C)/dB,   d(C)/dC]
+
+    denom = A**2 + B**2
+    J = np.array([
+        [-B/(2*(A**2 + B**2)), A/(2*(A**2 + B**2)),0],  # d(phi)/d(A,B,C)
+        [A/dt, B/dt, 0],                                # d(dt)/d(A,B,C)
+        [0, 0, 1]                                       # d(C)/d[A,B,C]      
+                    ])
+    
+
+    pcov = J @ pcov_ABC @ J.T
+    
+    return {
+        'phi': phi, 'dt': dt, 'C': C,
+        'phi_err': np.sqrt(pcov[0,0]),
+        'dt_err': np.sqrt(pcov[1,1]),
+        'C_err' :np.sqrt(pcov[2, 2]),
+        'covariance': pcov,
+        'A': A, 'B': B
+    }
+
 def compute_SI_model(baz_deg, phi, dt):
     """
     Compute splitting intensity from physical parameters.
@@ -1077,7 +1332,7 @@ def compute_SI_model(baz_deg, phi, dt):
 #     return results
 
 def analyze_station_comparison(eventData, station_code, bin_width=5, bin_minimum=2, 
-                                s_depth=400, incident_angle=25, use_tilt=False):  # <-- Add use_tilt
+                                s_depth=400, incident_angle=25, use_tilt=False,with_C=False):  # <-- Add use_tilt
     """
     Analyze a station with three phase selections.
     """
@@ -1093,19 +1348,25 @@ def analyze_station_comparison(eventData, station_code, bin_width=5, bin_minimum
     
     results = {}
     
-    for name, data in [('sks', eventData_sks), 
-                       ('sks_deep', eventData_sks_deep), 
-                       ('all', eventData_all)]:
+    datasets =  [
+                ('sks', eventData_sks),
+                ('sks_deep', eventData_sks_deep),
+                ('all', eventData_all),
+                ('complex', eventData_sks_deep)
+                ]
+
+    for name, data in datasets:
         
         station_events = data[data['evstation'] == station_code]
         
         if len(station_events) < 3:
+            print("analyze_station_comparison: less than 3 events!")
             results[name] = None
             continue
         
         # Binned analysis with use_tilt
         try:
-            print('gonna try and analyze a station')
+            # print(f'analyze_station_comparison: trying to analyze station for {name}')
             result_binned = analysis.analyze_station(
                 event_data=data,
                 station_code=station_code,
@@ -1113,11 +1374,13 @@ def analyze_station_comparison(eventData, station_code, bin_width=5, bin_minimum
                 bin_minimum=bin_minimum,
                 s_depth=s_depth,
                 incident_angle=incident_angle,
-                use_tilt=use_tilt  # <-- Pass through
+                use_tilt=use_tilt,  # <-- Pass through
+                with_C=with_C
             )
         except Exception as e:
-            print("it did not work...")
+            print("Failed within analyze_station_comparison")
             print(e)
+            traceback.print_exc()
             result_binned = None
         
         # Individual analysis with use_tilt
@@ -1901,7 +2164,7 @@ Publication Quality Figures of Individual Splitting Measurements and SI Curve
 Drafted May 7 2026
 '''
 
-def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, figsize=(24, 10), dpi=300, savepath=None):
+def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, figsize=(24, 10), dpi=300, savepath=None,with_C=False):
    
 
 
@@ -1912,22 +2175,33 @@ def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, fig
     
     result_binned = data['result_binned']
     station_events = data['station_events']
+
     
     # Extract parameters
     phi_binned = result_binned['phi']
     dt_binned = result_binned['dt']
 
+
+
     # phi_binned = 56 this was done just to show a different fast axis angle for ARMA, but it is not correct 
     
     # Fit curve
     degs = np.arange(0, 360, 1)
-    si_fit_binned = si_function_simple(degs, phi_binned, dt_binned)
 
-
-    if station_code in ["AS31","SNZO","XMIS"]:
-        ylim = math.ceil(abs(max(station_events['wiggleSI_calc'])))
+    if with_C:
+        C_binned = result_binned['C']
+        si_fit_binned = si_function_simple_with_C(degs, phi_binned, dt_binned, C_binned)
     else:
-        ylim = math.ceil(abs(max(station_events['wiggleSI_calc']))*2) / 2
+        si_fit_binned = si_function_simple(degs, phi_binned, dt_binned)
+
+    # set y limiit for plots, either whole or half integer
+    # if station_code in ["AS31","SNZO","XMIS","YNG","FITZ"]:
+    #     ylim = math.ceil(abs(max(station_events['wiggleSI_calc'])))
+    # else:
+    #     ylim = math.ceil(abs(max(station_events['wiggleSI_calc']))*2) / 2
+
+    # or just set as 2 for prague plots for easy animation
+    ylim = 2
 
 
     # Cyclic colormap for azimuth
@@ -1965,7 +2239,7 @@ def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, fig
             )
             # ax.errorbar(row['calcbaz'], row['wiggleSI_calc'], 
             #            yerr=row['SI_calc_error'], 
-            #            ecolor=color, alpha=0.3, fmt='none')
+            #            ecolor='grey', alpha=0.3, fmt='none')
             
         
         elif row['evphase'] == 'S':
@@ -1976,11 +2250,13 @@ def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, fig
 
             # Color by depth
             if row['evdp'] >= s_depth:
+                marker_size = 100
                 # label = 'Shallow' if not s_deep_plotted else None
                 # s_deep_plotted = True
                 # color = 'green'
                 n_deep += 1
             else:
+                marker_size = 40
                 # label = 'S shallow' if not s_shallow_plotted else None
                 # s_shallow_plotted = True
                 # color = 'red'
@@ -1990,7 +2266,7 @@ def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, fig
             #        color=color, alpha=0.5, markersize=6, label=label)
             # ax.errorbar(row['calcbaz'], row['wiggleSI_calc'], 
             #            yerr=row['SI_calc_error'], 
-            #            ecolor=color, alpha=0.3, fmt='none')
+            #            ecolor='grey', alpha=0.3, fmt='none')
             s_scatter = ax.scatter(
                 row['calcbaz'],
                 row['wiggleSI_calc'],
@@ -1999,7 +2275,7 @@ def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, fig
                 vmin=0,
                 vmax=360,
                 marker='o',
-                s=100,
+                s=marker_size,
                 edgecolors='black',
                 linewidths=1,
                 alpha=0.8,
@@ -2048,14 +2324,20 @@ def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, fig
     for _, row in binned.iterrows():
         # name = int(row['name'])
         bin_color = 'gray'
-        # ax.plot(row['azimuth'], row['mean'], 'o', 
-        #                 color=bin_color, markersize=10)
-        ax.errorbar(row['azimuth'], row['mean'], yerr=1*row['std'], 
-                            color=bin_color, fmt='none', alpha=0.75)
+        # ax.plot(row['azimuth'], row['mean'], 'o',
+        #                 markeredgecolor=bin_color, 
+        #                 markerfacecolor='none',
+        #                  markeredgewidth=2, markersize=20)
+
+        # ax.errorbar(row['azimuth'], row['mean'], yerr=1*row['std'], 
+        #                     color=bin_color, fmt='none', alpha=0.45,zorder=2)
     
     # # Formatting
     n_total = n_sks + n_deep + n_shallow
     title_str = fr'$\phi$ = {round(phi_binned)}°, $\delta t$ = {round(dt_binned,1)}s'
+
+    if with_C:
+        title_str = title_str + f', C = {round(C_binned,2)}'
     
     ax.set_title(title_str, fontsize=14)
     ax.set_xlabel('Polarization Azimuth (°)', fontsize=14)
@@ -2066,10 +2348,469 @@ def publication_SI_curve(results, station_code, phases_allowed, s_depth=400, fig
     ax.axhline(1, color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
     ax.axhline(-1, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
 
+    # #blob diagnostic
+    # ax.axvline(130, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+    # ax.axvline(160, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+
+
     # ax.legend(loc='upper right', fontsize=10)
     # ax.grid(True, alpha=0.3)
     
     fig.suptitle(f'{station_code} Splitting Intensity', fontsize=20, y=0.98)
+
+    print(f"Fast Axis: {phi_binned}, Delay Time: {dt_binned}")
+    
+    # ===== SAVE WITH HIGH RESOLUTION =====
+    if savepath is not None:
+        fig.savefig(savepath, dpi=dpi, bbox_inches='tight')
+    
+    return fig, {
+        'phi_binned': phi_binned,
+        'dt_binned': dt_binned,
+        'n_sks': n_sks,
+        'n_deep': n_deep,
+        'n_shallow': n_shallow,
+        'n_total': n_total
+    }
+
+def publication_SI_curve_for_AS31(results, station_code, phases_allowed, s_depth=400, figsize=(24, 10), dpi=300, savepath=None,with_C=False):
+   
+    '''
+    special function to plot the double layer on the curve as well (Barbara's request)
+    
+    '''
+
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Use phase from station phase mapping
+    data = results.get(phases_allowed)
+    
+    result_binned = data['result_binned']
+    station_events = data['station_events']
+
+    
+    # Extract parameters
+    phi_binned = result_binned['phi']
+    dt_binned = result_binned['dt']
+
+    # asthenospheric params for testing purposes
+    astheno_fast = 5
+    astheno_lag = 0.4
+
+    # phi_binned = 56 this was done just to show a different fast axis angle for ARMA, but it is not correct 
+    
+    # Fit curve
+    degs = np.arange(0, 360, 1)
+
+    if with_C:
+        C_binned = result_binned['C']
+        si_fit_binned = si_function_simple_with_C(degs, phi_binned, dt_binned, C_binned)
+    else:
+        si_fit_binned = si_function_simple(degs, phi_binned, dt_binned)
+
+        # si_fit_binned_double = si_function_double(degs, astheno_fast, astheno_lag, phi_binned, dt_binned)
+        si_fit_binned_double = si_function_simple(degs, astheno_fast, astheno_lag)
+
+
+    # set y limiit for plots, either whole or half integer
+    # if station_code in ["AS31","SNZO","XMIS","YNG","FITZ"]:
+    #     ylim = math.ceil(abs(max(station_events['wiggleSI_calc'])))
+    # else:
+    #     ylim = math.ceil(abs(max(station_events['wiggleSI_calc']))*2) / 2
+
+    # or just set as 2 for prague plots for easy animation
+    ylim = 2
+
+
+    # Cyclic colormap for azimuth
+    cmap = plt.cm.twilight  # twilight is cyclic (wraps at 360°)
+    
+    # ==================== PLOT ALL PHASES ====================
+    sks_plotted = s_deep_plotted = s_shallow_plotted = False
+    n_sks = n_deep = n_shallow = 0
+    sks_scatter = None
+    s_scatter = None
+    
+    for _, row in station_events.iterrows():
+        if row['evphase'] == 'SKS':
+            label = 'SKS phase' if not sks_plotted else None
+            sks_plotted = True
+            color = 'black'
+            n_sks += 1
+            
+            # ax.plot(row['calcbaz'], row['wiggleSI_calc'], 'x', 
+            #        color=color, alpha=0.7, markersize=10,markeredgewidth=3, label=label)
+
+            sks_scatter = ax.scatter(
+                row['calcbaz'],
+                row['wiggleSI_calc'],
+                c = color,
+                # cmap=cmap,
+                # vmin=0,
+                # vmax=360,
+                marker='o',
+                s=100,
+                edgecolors='black',
+                linewidths=1,
+                alpha=0.8,
+                zorder=5
+            )
+            # ax.errorbar(row['calcbaz'], row['wiggleSI_calc'], 
+            #            yerr=row['SI_calc_error'], 
+            #            ecolor='grey', alpha=0.3, fmt='none')
+            
+        
+        elif row['evphase'] == 'S':
+
+            label = 'S Phase' if not s_deep_plotted else None
+            s_deep_plotted = True
+            color = 'white'
+
+            # Color by depth
+            if row['evdp'] >= s_depth:
+                marker_size = 100
+                # label = 'Shallow' if not s_deep_plotted else None
+                # s_deep_plotted = True
+                # color = 'green'
+                n_deep += 1
+            else:
+                marker_size = 40
+                # label = 'S shallow' if not s_shallow_plotted else None
+                # s_shallow_plotted = True
+                # color = 'red'
+                n_shallow += 1
+            
+            # ax.plot(row['calcbaz'], row['wiggleSI_calc'], '.', 
+            #        color=color, alpha=0.5, markersize=6, label=label)
+            # ax.errorbar(row['calcbaz'], row['wiggleSI_calc'], 
+            #            yerr=row['SI_calc_error'], 
+            #            ecolor='grey', alpha=0.3, fmt='none')
+            s_scatter = ax.scatter(
+                row['calcbaz'],
+                row['wiggleSI_calc'],
+                c = row['evbaz'],
+                cmap=cmap,
+                vmin=0,
+                vmax=360,
+                marker='o',
+                s=marker_size,
+                edgecolors='black',
+                linewidths=1,
+                alpha=0.8,
+                zorder=5
+            )
+
+    if s_scatter is not None:
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="3%", pad=0.15)
+        # cbar = plt.colorbar(scatter, ax=ax, pad=0.02)
+        cbar = plt.colorbar(s_scatter, cax=cax, orientation='vertical', 
+                        pad=0.5, shrink=0.9, aspect=25)
+        # cbar.ax.xaxis.set_label_position('bottom')
+        cbar.set_label('Backazimuth (°)', fontsize=14,labelpad=10)
+        cbar.set_ticks([0, 90, 180, 270, 360])
+
+    from matplotlib.lines import Line2D
+
+    legend_elements = [
+        Line2D([0], [0],
+            marker='o',
+            color='w',
+            label='SKS phase',
+            markerfacecolor='black',
+            markeredgecolor='black',
+            markersize=10),
+
+        # Line2D([0], [0],
+        #     marker='o',
+        #     color='w',
+        #     label='S phase \n(color = BAZ)',
+        #     markerfacecolor='white',
+        #     markeredgecolor='black',
+        #     markersize=10)
+
+        Line2D( [0], [0],
+                color='black',
+                linestyle='-',
+                linewidth=3,
+                label='Single Layer'),
+
+        Line2D( [0], [0],
+                color='red',
+                linestyle='-',
+                linewidth=3,
+                label='Double Layer')
+
+    ]
+
+    ax.legend(handles=legend_elements,loc='upper right', fontsize=10)        
+    
+    # Label
+    # binned_label = f'Fit: φ={phi_binned:.1f}°, δt={dt_binned:.2f}s'
+    
+    # Plot fit
+    ax.plot(degs, si_fit_binned, '-', color='black', linewidth=3)
+    ax.plot(degs, si_fit_binned_double, '-', color='red', linewidth=3)
+
+    
+    binned = result_binned['binned']
+    for _, row in binned.iterrows():
+        # name = int(row['name'])
+        bin_color = 'gray'
+        # ax.plot(row['azimuth'], row['mean'], 'o',
+        #                 markeredgecolor=bin_color, 
+        #                 markerfacecolor='none',
+        #                  markeredgewidth=2, markersize=20)
+
+        # ax.errorbar(row['azimuth'], row['mean'], yerr=1*row['std'], 
+        #                     color=bin_color, fmt='none', alpha=0.45,zorder=2)
+    
+    # # Formatting
+    n_total = n_sks + n_deep + n_shallow
+    title_str = fr'$\phi_1$ = {round(phi_binned)}°, $\delta t_1$ = {round(dt_binned,1)}s, $\phi_2$ = {round(astheno_fast)}°, $\delta t_2$ = {round(astheno_lag,1)}s'
+
+    if with_C:
+        title_str = title_str + f', C = {round(C_binned,2)}'
+    
+    ax.set_title(title_str, fontsize=14)
+    ax.set_xlabel('Polarization Azimuth (°)', fontsize=14)
+    ax.set_xticks(np.linspace(0,360,7))
+    ax.set_ylabel('Splitting Intensity', fontsize=14)
+    ax.set_ylim(-ylim,ylim)
+    ax.axhline(0, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+    ax.axhline(1, color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+    ax.axhline(-1, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+
+    # #blob diagnostic
+    # ax.axvline(130, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+    # ax.axvline(160, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+
+
+    # ax.legend(loc='upper right', fontsize=10)
+    # ax.grid(True, alpha=0.3)
+    
+    fig.suptitle(f'{station_code} Single / Double Layer', fontsize=20, y=0.98)
+
+    print(f"Fast Axis: {phi_binned}, Delay Time: {dt_binned}")
+    
+    # ===== SAVE WITH HIGH RESOLUTION =====
+    if savepath is not None:
+        fig.savefig(savepath, dpi=dpi, bbox_inches='tight')
+    
+    return fig, {
+        'phi_binned': phi_binned,
+        'dt_binned': dt_binned,
+        'n_sks': n_sks,
+        'n_deep': n_deep,
+        'n_shallow': n_shallow,
+        'n_total': n_total
+    }
+
+def publication_SI_curve_for_ARMA(results, station_code, phases_allowed, s_depth=400, figsize=(24, 10), dpi=300, savepath=None,with_C=False):
+   
+    '''
+    special function for all the ARMA curves in figure 3 of the paper    
+    '''
+
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Use phase from station phase mapping
+    data = results.get(phases_allowed)
+    
+    result_binned = data['result_binned']
+    station_events = data['station_events']
+
+    
+    # Extract parameters
+    phi_binned = result_binned['phi']
+    dt_binned = result_binned['dt']
+
+
+    # phi_binned = 56 this was done just to show a different fast axis angle for ARMA, but it is not correct 
+    
+    # Fit curve
+    degs = np.arange(0, 360, 1)
+
+    if with_C:
+        C_binned = result_binned['C']
+        si_fit_binned = si_function_simple_with_C(degs, phi_binned, dt_binned, C_binned)
+    else:
+        si_fit_binned = si_function_simple(degs, phi_binned, dt_binned)
+
+
+    # set y limiit for plots, either whole or half integer
+    # if station_code in ["AS31","SNZO","XMIS","YNG","FITZ"]:
+    #     ylim = math.ceil(abs(max(station_events['wiggleSI_calc'])))
+    # else:
+    #     ylim = math.ceil(abs(max(station_events['wiggleSI_calc']))*2) / 2
+
+    # or just set as 2 for prague plots for easy animation
+    ylim = 2.0
+
+
+    # Cyclic colormap for azimuth
+    cmap = plt.cm.twilight  # twilight is cyclic (wraps at 360°)
+    
+    # ==================== PLOT ALL PHASES ====================
+    sks_plotted = s_deep_plotted = s_shallow_plotted = False
+    n_sks = n_deep = n_shallow = 0
+    sks_scatter = None
+    s_scatter = None
+    
+    for _, row in station_events.iterrows():
+        if row['evphase'] == 'SKS':
+            label = 'SKS phase' if not sks_plotted else None
+            sks_plotted = True
+            color = 'black'
+            n_sks += 1
+            
+            # ax.plot(row['calcbaz'], row['wiggleSI_calc'], 'x', 
+            #        color=color, alpha=0.7, markersize=10,markeredgewidth=3, label=label)
+
+            sks_scatter = ax.scatter(
+                row['calcbaz'],
+                row['wiggleSI_calc'],
+                c = color,
+                # cmap=cmap,
+                # vmin=0,
+                # vmax=360,
+                marker='o',
+                s=100,
+                edgecolors='black',
+                linewidths=1,
+                alpha=0.8,
+                zorder=5
+            )
+            # ax.errorbar(row['calcbaz'], row['wiggleSI_calc'], 
+            #            yerr=row['SI_calc_error'], 
+            #            ecolor='grey', alpha=0.3, fmt='none')
+            
+        
+        elif row['evphase'] == 'S':
+
+            label = 'S Phase' if not s_deep_plotted else None
+            s_deep_plotted = True
+            color = 'white'
+
+            # Color by depth
+            if row['evdp'] >= s_depth:
+                marker_size = 100
+                # label = 'Shallow' if not s_deep_plotted else None
+                # s_deep_plotted = True
+                # color = 'green'
+                n_deep += 1
+            else:
+                marker_size = 40
+                # label = 'S shallow' if not s_shallow_plotted else None
+                # s_shallow_plotted = True
+                # color = 'red'
+                n_shallow += 1
+            
+            # ax.plot(row['calcbaz'], row['wiggleSI_calc'], '.', 
+            #        color=color, alpha=0.5, markersize=6, label=label)
+            # ax.errorbar(row['calcbaz'], row['wiggleSI_calc'], 
+            #            yerr=row['SI_calc_error'], 
+            #            ecolor='grey', alpha=0.3, fmt='none')
+            s_scatter = ax.scatter(
+                row['calcbaz'],
+                row['wiggleSI_calc'],
+                c = row['evbaz'],
+                cmap=cmap,
+                vmin=0,
+                vmax=360,
+                marker='o',
+                s=marker_size,
+                edgecolors='black',
+                linewidths=1,
+                alpha=0.8,
+                zorder=5
+            )
+
+    if s_scatter is not None:
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="3%", pad=0.15)
+        # cbar = plt.colorbar(scatter, ax=ax, pad=0.02)
+        cbar = plt.colorbar(s_scatter, cax=cax, orientation='vertical', 
+                        pad=0.5, shrink=0.9, aspect=25)
+        cbar.ax.tick_params(labelsize=14)
+        # cbar.ax.xaxis.set_label_position('bottom')
+        cbar.set_label('Backazimuth (°)', fontsize=20,labelpad=10)
+        cbar.set_ticks([0, 90, 180, 270, 360])
+
+    from matplotlib.lines import Line2D
+
+    legend_elements = [
+        Line2D([0], [0],
+            marker='o',
+            color='w',
+            label='SKS phase',
+            markerfacecolor='black',
+            markeredgecolor='black',
+            markersize=10),
+
+        Line2D([0], [0],
+            marker='o',
+            color='w',
+            label='S phase \n(color = BAZ)',
+            markerfacecolor='white',
+            markeredgecolor='black',
+            markersize=10),
+
+        Line2D( [0], [0],
+                color='black',
+                linestyle='-',
+                linewidth=3,
+                label='Single Layer'),
+    ]
+
+    ax.legend(handles=legend_elements,loc='upper right', fontsize=14)        
+    
+    # Label
+    # binned_label = f'Fit: φ={phi_binned:.1f}°, δt={dt_binned:.2f}s'
+
+    ax.tick_params(axis='both', labelsize=20)
+    
+    # Plot fit
+    ax.plot(degs, si_fit_binned, '-', color='black', linewidth=3)
+
+    
+    binned = result_binned['binned']
+    for _, row in binned.iterrows():
+        # name = int(row['name'])
+        bin_color = 'gray'
+        # ax.plot(row['azimuth'], row['mean'], 'o',
+        #                 markeredgecolor=bin_color, 
+        #                 markerfacecolor='none',
+        #                  markeredgewidth=2, markersize=20)
+
+        # ax.errorbar(row['azimuth'], row['mean'], yerr=1*row['std'], 
+        #                     color=bin_color, fmt='none', alpha=0.45,zorder=2)
+    
+    # # Formatting
+    n_total = n_sks + n_deep + n_shallow
+    title_str = fr'$\phi$ = {round(phi_binned)}°, $\delta t$ = {round(dt_binned,1)}s'
+
+    if with_C:
+        title_str = title_str + f', C = {round(C_binned,2)}'
+    
+    ax.set_title(title_str, fontsize=20)
+    ax.set_xlabel('Polarization Azimuth (°)', fontsize=20)
+    ax.set_xticks(np.linspace(0,360,7))
+    ax.set_ylabel('Splitting Intensity', fontsize=20)
+    ax.set_ylim(-ylim,ylim)
+    ax.axhline(0, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+    ax.axhline(1, color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+    ax.axhline(-1, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+
+    # #blob diagnostic
+    # ax.axvline(130, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+    # ax.axvline(160, color='gray', linestyle='--', linewidth=0.8, alpha=0.3)
+
+
+    # ax.legend(loc='upper right', fontsize=10)
+    # ax.grid(True, alpha=0.3)
+    
+    fig.suptitle(f'{station_code}', fontsize=30, y=0.98)
 
     print(f"Fast Axis: {phi_binned}, Delay Time: {dt_binned}")
     
