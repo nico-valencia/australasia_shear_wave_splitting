@@ -1,2 +1,0 @@
-evtime,evlat,evlon,evdp,evmg,evphase
-2016-05-28T09:46:59.780000Z,-56.2409,-26.9353,78.0,7.2,SKS

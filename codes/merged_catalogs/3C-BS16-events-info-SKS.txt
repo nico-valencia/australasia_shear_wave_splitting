@@ -1,2 +1,0 @@
-evtime,evlat,evlon,evdp,evmg,evphase
-2018-01-10T02:51:31.860000Z,17.4743,-83.5193,10.0,7.5,SKS

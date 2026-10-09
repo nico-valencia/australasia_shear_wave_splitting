@@ -22,7 +22,7 @@ from obspy.geodetics.base import gps2dist_azimuth
 
 Log_Format = "%(asctime)s - %(levelname)s - %(message)s"
 
-logging.basicConfig(filename = "logfile.log",
+logging.basicConfig(filename = "logfile_2.log",
                     filemode = "w",
                     format = Log_Format, 
                     level = logging.INFO)
@@ -39,7 +39,7 @@ class DownloadData:
         inventorytxtfile,
         catalogxmlloc,
         catalogtxtloc,
-        channel = "BHE,BHN,BHZ,LHZ,LHE,LHN,VHE,VHN,VHZ"):   #    "BHZ,BHE,BHN,LHZ,LHE,LHN,VHE,VHN,VHZ"   # try SHZ instead for DBIC  
+        channel = "BHE,BHN,BHZ"):   #    "BHZ,BHE,BHN,LHZ,LHE,LHN,VHE,VHN,VHZ"   # try SHZ instead for DBIC  
         self.minlongitude = minlongitude
         self.maxlongitude = maxlongitude
         self.minlatitude = minlatitude
@@ -48,7 +48,7 @@ class DownloadData:
         self.inventorytxtfile = inventorytxtfile
         self.channel = channel
         self.inventoryfile = self.inventorytxtfile.split(".")[0]+ ".xml"
-        self.method = 's'
+        self.method = 'S'
         self.catalogxmlloc = catalogxmlloc
         self.catalogtxtloc = catalogtxtloc
         self.out_inventorytxtfile = self.inventorytxtfile.split(".")[0]+'_combined'+'.txt'
@@ -186,10 +186,7 @@ class DownloadData:
                             for cat in catalog:
                                 try:
                                     try:
-                                    
                                         evtime,evlat,evlon,evdp,evmg,evphase=cat.origins[0].time,cat.origins[0].latitude,cat.origins[0].longitude,cat.origins[0].depth/1000,cat.magnitudes[0].mag,self.method
-                                        # evtime,evlat,evlon,evdp,evmg,evmgtp=cat.origins[0].time,cat.origins[0].latitude,cat.origins[0].longitude,cat.origins[0].depth/1000,cat.magnitudes[0].mag,cat.magnitudes[0].magnitude_type
-                                    except KeyboardInterrupt:
                                         sys.exit()
                                     except:
                                         evtime,evlat,evlon,evdp,evmg,evphase=cat.origins[0].time,cat.origins[0].latitude,cat.origins[0].longitude,cat.origins[0].depth/1000,cat.magnitudes[0].mag,self.method
@@ -198,6 +195,7 @@ class DownloadData:
                                     evlons.append(float(evlon))
                                     evdps.append(float(evdp))
                                     evmgs.append(float(evmg))
+                                    # evmgtps.append(str(evmgtp))
                                     evphases.append(str(evphase))
                                     f.write('{},{:.4f},{:.4f},{:.1f},{:.1f},{}\n'.format(evtime,evlat,evlon,evdp,evmg,evphase)) #writing txt catalog
 
@@ -261,10 +259,9 @@ class DownloadData:
         freqmin = 0.01, 
         freqmax = 0.5, 
         resampleRate = 20.0, 
-        phase = 's',
+        phase = 'S',
         waveform_offset = 80.0):
 
-        print(datafileloc)
         self.model = TauPyModel(earthmodel)
         os.makedirs(datafileloc, exist_ok=True)
         os.makedirs(mergedCatLoc, exist_ok=True)
@@ -314,11 +311,6 @@ class DownloadData:
                 
                 logger.info("-- Searching and downloading data for {}; {}-{}".format(self.method, net, stn))
                 print('done1')
-                print(catfile)
-                print(tot_evnt_stns)
-                print(datafileloc)
-                # print(len(glob.glob(sksdatafile_prefix+"*.mseed")))
-
                 sksdatafile_prefix = os.path.join(datafileloc, "{}-{}".format(net, stn))
                 print(sksdatafile_prefix)
                 if (os.path.exists(catfile)) and (len(glob.glob(sksdatafile_prefix+"*.mseed"))==0) and (tot_evnt_stns > 0) :
@@ -429,7 +421,7 @@ class DownloadData:
                             elat,
                             elon, 
                             evtime,
-                            phase = 's',
+                            phase = 'S',
                             waveform_offset = 80.0):
         arrivals = self.model.get_travel_times_geo(float(evdp),slat,slon,float(elat),float(elon),phase_list=[phase])
         ##### my code ######
@@ -541,8 +533,8 @@ class DownloadData:
         # except Exception:
         #     return 'failure'
 
-directory = 'senior_thesis/data/sample/CAN' 
-station = 'CAN' 
+directory = 'senior_thesis/data/complete/swp2' 
+station = 'swp2' 
 
 
 if __name__=="__main__":
@@ -550,30 +542,36 @@ if __name__=="__main__":
         # clientlist = ['http://ws.ipgp.fr','http://service.iris.edu'],
         # clientlist = ['http://service.iris.edu'],
         # clientlist = ['NCEDC'],
+        # clientlist = ['IRIS','GEOFON','AUSPASS'],
+        # clientlist = ['IRIS'],
+        # clientlist = ['https://geofon.gfz.de','http://service.iris.edu','http://ws.ipgp.fr','https://eida.ethz.ch'],
+        clientlist = ['https://geofon.gfz.de','http://service.iris.edu','http://ws.ipgp.fr','https://eida.ethz.ch'] + list(URL_MAPPINGS.keys()),
 
-        clientlist = list(URL_MAPPINGS.keys()),
-        minlongitude = 120,
-        maxlongitude = 160,
-        minlatitude = -40,
-        maxlatitude = 50,
+
+
+        # clientlist = list(URL_MAPPINGS.keys()),
+        minlongitude = 100, # 120
+        maxlongitude = 180, # 160
+        minlatitude = -50,  # -40    
+        maxlatitude = 20,   #  50
         inventorytxtfile = '../../'+directory+'/'+station+'_stations_info.txt',
-        catalogxmlloc= '../../'+directory+'/'+station+'_event_info_xml',
-        catalogtxtloc= '../../'+directory+'/'+station+'_event_info/',
+        catalogxmlloc='../../'+directory+'/'+station+'_event_info_xml',
+        catalogtxtloc='../../'+directory+'/'+station+'_event_info/',
     )
 
     # # ## download the stations information
-    # downloadclass.get_stnxml(network='G', station="CAN", level = 'response')
+    # downloadclass.get_stnxml(network='*', station='*', level = 'response')
 
     # ## download event catalog corresponding to each station   #make sure to check the assigned epicentral distances!!!
     # downloadclass.obtain_events(
     #         minmagnitude    = 6,
-    #         maxmagnitude    = 9.5,
+    #         maxmagnitude    = 8,
     #         minradius       = 0, 
-    #         maxradius       = 30,
-    #         minimum_operation_time_station = 1)
+    #         maxradius       = 90,
+    #         minimum_operation_time_station = 3)
    
     downloadclass.download_all_data(
-        datafileloc='../../'+directory+'/'+station+'_s_waveforms',
+        datafileloc='../../'+directory+'/'+station+'_S_waveforms',
         locations=[""], 
         mergedCatLoc = 'merged_catalogs', 
         earthmodel='iasp91',
@@ -581,5 +579,5 @@ if __name__=="__main__":
         freqmin = 0.01, 
         freqmax = 0.125,  # have done 0.5 in the past 
         resampleRate = 20.0, 
-        phase = 's',
+        phase = 'S',
         waveform_offset = 60.0)
